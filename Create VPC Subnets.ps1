@@ -46,10 +46,10 @@ $tag.Value = "RemoteMgmtPorts"
 New-EC2Tag -Resource $securityGroup -Tag $tag
 
 #Inbound Rules
-$InTCP22 = @{ IpProtocol="tcp"; FromPort="22"; ToPort="22"; IpRanges="10.0.0.0/32" }
+$InTCP22 = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="10.0.0.0/32" }
 $InTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="10.0.0.0/32" }
 #Outbound Rules
-$EgTCP22 = @{ IpProtocol="tcp"; FromPort="22"; ToPort="22"; IpRanges="10.0.0.0/32" }
+$EgTCP22 = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="10.0.0.0/32" }
 $EgTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="10.0.0.0/32" }
 
 Grant-EC2SecurityGroupIngress -GroupId $SecurityGroup -IpPermission @( $InTCP22, $InTCP3389 )

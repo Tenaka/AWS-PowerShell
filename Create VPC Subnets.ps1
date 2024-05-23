@@ -1,4 +1,8 @@
-$cidr = "10.99.1"
+#https://docs.aws.amazon.com/powershell/latest/reference/items/EC2_cmdlets.html
+#https://docs.aws.amazon.com/powershell/latest/userguide/powershell_ec2_code_examples.html
+
+
+$cidr = "10.0.99"
 
 #VPC
 <#
@@ -37,7 +41,6 @@ New-EC2Tag -Resource $Ec2subnetPriv.SubnetId -Tag $tag
 #Create Internet Gateway and attach it to the VPC
 <#
     New-EC2InternetGateway
-
 #>
 $Ec2InternetGateway = New-EC2InternetGateway
 $InterGatewayID = $Ec2InternetGateway.InternetGatewayId
@@ -50,11 +53,11 @@ New-EC2Tag -Resource $InterGatewayID -Tag $tag
 
 #Create custom route table with route to the internet and associate it with the subnet
 <#
-Get-EC2RouteTable -Filter @{ Name="vpc-id"; Values="vpc-1a2b3c4d" }
-New-EC2Route -RouteTableId rtb-1a2b3c4d -DestinationCidrBlock 0.0.0.0/0 -GatewayId igw-1a2b3c4d
+    Get-EC2RouteTable -Filter @{ Name="vpc-id"; Values="vpc-1a2b3c4d" }
+    New-EC2Route -RouteTableId rtb-1a2b3c4d -DestinationCidrBlock 0.0.0.0/0 -GatewayId igw-1a2b3c4d
 #>
 #public Route
-$Ec2RouteTable = New-EC2RouteTable -VpcId $vpdID -TagSpecification $tag
+$Ec2RouteTable = New-EC2RouteTable -VpcId $vpdID 
 $Ec2RouteTableID = $Ec2RouteTable.RouteTableId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
@@ -66,18 +69,18 @@ Register-EC2RouteTable -RouteTableId $Ec2RouteTable.RouteTableId -SubnetId $SubP
 
 #Create Security group and firewall rule for RDP
 <#
-Get-EC2SecurityGroup -GroupName my-security-group
-Get-EC2SecurityGroup -Filter @{Name="vpc-id";Values="vpc-0fc1ff23456b789eb"}
-New-EC2SecurityGroup -GroupName my-security-group -Description "my security group" -VpcId vpc-12345678
+    Get-EC2SecurityGroup -GroupName my-security-group
+    Get-EC2SecurityGroup -Filter @{Name="vpc-id";Values="vpc-0fc1ff23456b789eb"}
+    New-EC2SecurityGroup -GroupName my-security-group -Description "my security group" -VpcId vpc-12345678
 
-$ip = @{ IpProtocol="tcp"; FromPort="80"; ToPort="80"; IpRanges="203.0.113.0/24" } 
-Grant-EC2SecurityGroupEgress -GroupId sg-12345678 -IpPermission $ip
+    $ip = @{ IpProtocol="tcp"; FromPort="80"; ToPort="80"; IpRanges="203.0.113.0/24" } 
+    Grant-EC2SecurityGroupEgress -GroupId sg-12345678 -IpPermission $ip
 
-$ip1 = @{ IpProtocol="tcp"; FromPort="22"; ToPort="22"; IpRanges="203.0.113.25/32" }
-$ip2 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="203.0.113.25/32" }
-Grant-EC2SecurityGroupIngress -GroupId sg-12345678 -IpPermission @( $ip1, $ip2 )
+    $ip1 = @{ IpProtocol="tcp"; FromPort="22"; ToPort="22"; IpRanges="203.0.113.25/32" }
+    $ip2 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="203.0.113.25/32" }
+    Grant-EC2SecurityGroupIngress -GroupId sg-12345678 -IpPermission @( $ip1, $ip2 )
 
-[Amazon.EC2.Model.IpPermission]::new() | Get-Member -MemberType Property
+    [Amazon.EC2.Model.IpPermission]::new() | Get-Member -MemberType Property
 #>
 $SecurityGroup = New-EC2SecurityGroup -Description "Rempote Mgmt Ports" -GroupName "RemoteMgmtPorts2" -VpcId $vpdID -Force
 $tag = New-Object Amazon.EC2.Model.Tag
@@ -108,4 +111,25 @@ Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroup -IpPermission $InRvDefault
     Set-EC2NetworkAclEntry -NetworkAclId acl-12345678 -Egress $false -RuleNumber 100 -Protocol 17 -PortRange_From 53 -PortRange_To 53 -CidrBlock 203.0.113.12/24 -RuleAction allow
 
     Set-EC2NetworkAclAssociation -NetworkAclId $naclNetID -AssociationId aclassoc-1a2b3c4d
+
 #>
+#Get-EC2NetworkAcl
+$Nacl = New-EC2NetworkAcl -vpcid $vpdID 
+$naclNetID = $Nacl.NetworkAclId
+$tag = New-Object Amazon.EC2.Model.Tag
+$tag.Key = "Name"
+$tag.Value = "$($cidr).32/27 - Public NACL"
+New-EC2Tag -Resource $naclNetID -Tag $tag
+New-EC2NetworkAclEntry -NetworkAclId $naclNetID -Egress $false -RuleNumber 100 -Protocol 17 -PortRange_From 53 -PortRange_To 53 -CidrBlock 0.0.0.0/0 -RuleAction allow 
+
+
+
+#Transit Gateways
+
+
+#Endpoints
+<#
+    New-EC2VpcEndpoint -ServiceName com.amazonaws.eu-west-1.s3 -VpcId vpc-0fc1ff23f45b678eb
+
+#>
+

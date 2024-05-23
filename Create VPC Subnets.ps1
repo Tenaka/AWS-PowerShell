@@ -99,8 +99,6 @@ Grant-EC2SecurityGroupEgress -GroupId $SecurityGroup -IpPermission @( $EgTCP22, 
 $InRvDefault = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="0.0.0.0/0" }
 Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroup -IpPermission $InRvDefault
 
-
-
 #NACLs
 <#
     New-EC2NetworkAcl -VpcId vpc-12345678
@@ -122,9 +120,18 @@ $tag.Value = "$($cidr).32/27 - Public NACL"
 New-EC2Tag -Resource $naclNetID -Tag $tag
 New-EC2NetworkAclEntry -NetworkAclId $naclNetID -Egress $false -RuleNumber 100 -Protocol 17 -PortRange_From 53 -PortRange_To 53 -CidrBlock 0.0.0.0/0 -RuleAction allow 
 
-
-
 #Transit Gateways
+$newTransitGate = New-EC2TransitGateway
+$transitGateID = $newTransitGate.TransitGatewayId 
+$tag = New-Object Amazon.EC2.Model.Tag
+$tag.Key = "Name"
+$tag.Value = "$($cidr).32/27 - Transit Gateway"
+New-EC2Tag -Resource $transitGateID -Tag $tag
+
+#Transit Gateway Routing
+
+
+#Transit Gateway Attachment
 
 
 #Endpoints

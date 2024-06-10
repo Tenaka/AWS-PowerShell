@@ -2,7 +2,37 @@
 #https://docs.aws.amazon.com/powershell/latest/userguide/powershell_ec2_code_examples.html
 
 
+#Install required PowerShell Modules 
+install-module AWSLambdaPSCore -Force
+install-module AWS.tools.autoscaling -Force
+install-module AWS.tools.common -Force
+install-module AWS.tools.ec2 -Force
+Install-Module AWS.Tools.KeyManagementService -Force
+
+import-module AWSLambdaPSCore -Force
+import-module AWS.tools.autoscaling -Force
+import-module AWS.tools.common -Force
+import-module AWS.tools.ec2 -Force
+import-module AWS.Tools.KeyManagementService -Force
+
+Get-Module
+
+Set-defaultAWSRegion -Region us-east-1
+#####Set-AWSCredential -AccessKey A -SecretKey F - enter creds here
+
+
 $cidr = "10.0.99"
+
+
+#Create Key pair - keep pen file safe for later use
+$dateToday = get-date -format "yyyy-MM-dd"
+$pwdpath = (get-location).path  
+$newKeyPair = New-EC2KeyPair -KeyName "$($dateToday)-KP" -KeyFormat pem -KeyType rsa
+$keyPairMaterial = $newKeyPair.KeyMaterial > "$($pwdPath)\$($dateToday)-KP.pem"
+
+
+#New KMS value requires  AWS.Tools.KeyManagementService module
+
 
 #VPC
 <#
@@ -154,7 +184,7 @@ New-EC2Route -RouteTableId $Ec2RouteTable.RouteTableId -DestinationCidrBlock "19
 
 #Endpoints
 <#
-    New-EC2VpcEndpoint -ServiceName com.amazonaws.eu-west-1.s3 -VpcId vpc-
+    New-EC2VpcEndpoint -ServiceName c-om.amazonaws.eu-west-1.s3 -VpcId vpc-
 
 #>
 

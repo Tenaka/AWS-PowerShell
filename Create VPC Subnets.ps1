@@ -37,7 +37,6 @@ $tag.Key = "Name"
 $tag.Value = "$($cidr).32/27 - Private Subnet"
 New-EC2Tag -Resource $Ec2subnetPriv.SubnetId -Tag $tag
 
-
 #Create Internet Gateway and attach it to the VPC
 <#
     New-EC2InternetGateway
@@ -56,7 +55,7 @@ New-EC2Tag -Resource $InterGatewayID -Tag $tag
     Get-EC2RouteTable -Filter @{ Name="vpc-id"; Values="vpc-1a2b3c4d" }
     New-EC2Route -RouteTableId rtb-1a2b3c4d -DestinationCidrBlock 0.0.0.0/0 -GatewayId igw-1a2b3c4d
 #>
-#public Route
+#Public Route
 $Ec2RouteTable = New-EC2RouteTable -VpcId $vpdID 
 $Ec2RouteTableID = $Ec2RouteTable.RouteTableId
 $tag = New-Object Amazon.EC2.Model.Tag
@@ -120,23 +119,42 @@ $tag.Value = "$($cidr).32/27 - Public NACL"
 New-EC2Tag -Resource $naclNetID -Tag $tag
 New-EC2NetworkAclEntry -NetworkAclId $naclNetID -Egress $false -RuleNumber 100 -Protocol 17 -PortRange_From 53 -PortRange_To 53 -CidrBlock 0.0.0.0/0 -RuleAction allow 
 
-#Transit Gateways
-$newTransitGate = New-EC2TransitGateway
-$transitGateID = $newTransitGate.TransitGatewayId 
+
+#Transit Gateways - Transit Gateway to route VPN traffic to on-prem subnet of 192.168.2.0/24 (declared in route table)
+$newTransitGateway = New-EC2TransitGateway
+$transitGateID = $newTransitGateway.TransitGatewayId 
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
 $tag.Value = "$($cidr).32/27 - Transit Gateway"
 New-EC2Tag -Resource $transitGateID -Tag $tag
+    while((Get-EC2TransitGateway -TransitGatewayId $transitGateID).state.Value -contains 'notavailable')
+        {
+                Write-Host $transitGateID is (Get-EC2TransitGateway -TransitGatewayId $transitGateID).state.Value
+            Start-Sleep 10
+        }
+        Start-Sleep 10 
 
-#Transit Gateway Routing
+#Transit Gateway attachments - VPC to TG
+$TranGateAttVPC = New-EC2TransitGatewayVpcAttachment -VpcId $vpdID -TransitGatewayId $transitGateID -SubnetId $SubPubID 
+$TranGateAttVPCID = $TranGateAttVPC.TransitGatewayAttachmentId
+$tag = New-Object Amazon.EC2.Model.Tag
+$tag.Key = "Name"
+$tag.Value = "$($cidr).32/27 - Transit Gateway VPC Attachment to Public Subnet"
+New-EC2Tag -Resource $TranGateAttVPCID -Tag $tag
+start-sleep 10
+    while((Get-EC2TransitGatewayAttachment -TransitGatewayAttachmentId $TranGateAttVPCID).state.Value -Notcontains 'available')
+        {
+                Write-Host $TranGateAttVPCID is (Get-EC2TransitGatewayAttachment -TransitGatewayAttachmentId $TranGateAttVPCID).state.Value
+            Start-Sleep 10
+        }
 
-
-#Transit Gateway Attachment
+        Start-Sleep -Seconds 10
+New-EC2Route -RouteTableId $Ec2RouteTable.RouteTableId -DestinationCidrBlock "192.168.2.0/24" -TransitGatewayId $transitGateID
 
 
 #Endpoints
 <#
-    New-EC2VpcEndpoint -ServiceName com.amazonaws.eu-west-1.s3 -VpcId vpc-0fc1ff23f45b678eb
+    New-EC2VpcEndpoint -ServiceName com.amazonaws.eu-west-1.s3 -VpcId vpc-
 
 #>
 

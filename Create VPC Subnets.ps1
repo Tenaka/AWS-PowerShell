@@ -1,6 +1,9 @@
 #https://docs.aws.amazon.com/powershell/latest/reference/items/EC2_cmdlets.html
 #https://docs.aws.amazon.com/powershell/latest/userguide/powershell_ec2_code_examples.html
 
+#https://docs.aws.amazon.com/powershell/latest/reference/items/KeyManagementService_cmdlets.html
+
+
 
 #Install required PowerShell Modules 
 install-module AWSLambdaPSCore -Force
@@ -22,7 +25,7 @@ Set-defaultAWSRegion -Region us-east-1
 
 #Declare Subnet for VPV
 $cidr = "10.0.99"
-$whatsMyIP = "96.45.193.15"    #Enter your IP home or business will be used for allowing RDP traffic into Server
+$whatsMyIP = "91.49.195.13"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
 
 #Create Key pair - keep pen file safe for later use - for unencrypting local accout passwords
@@ -33,12 +36,13 @@ $keyPairMaterial = $newKeyPair.KeyMaterial > "$($pwdPath)\$($dateToday)-KP.pem"
 
 
 #New Key Management Service (KMS) value requires  AWS.Tools.KeyManagementService module
-#Not sure how to set Alias
 $newKMSKey = New-KMSKey -KeyUsage ENCRYPT_DECRYPT -Description "$($cidr).0/27 - KMS"
 $tag = New-Object Amazon.KeyManagementService.Model.Tag
 $tag.TagKey = "Name"
 $tag.TagValue = "$($cidr).0/27 - KMS"
 Add-KMSResourceTag -KeyId $newKMSKey.keyid -Tags $tag
+#no spaces allowed with Alias
+New-KMSAlias -TargetKeyId $newKMSKey.keyid -AliasName "alias/KMS-for-Encrypting-Volumes"
 
 #VPC
 <#
@@ -192,10 +196,13 @@ start-sleep 10
         Start-Sleep -Seconds 10
 New-EC2Route -RouteTableId $Ec2RouteTable.RouteTableId -DestinationCidrBlock "192.168.2.0/24" -TransitGatewayId $transitGateID
 
+New-EC2VpnGateway
+
+
 
 #Endpoints
 <#
     New-EC2VpcEndpoint -ServiceName c-om.amazonaws.eu-west-1.s3 -VpcId vpc-
 
-#>
+#> 
 

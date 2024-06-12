@@ -1,8 +1,12 @@
-#https://docs.aws.amazon.com/powershell/latest/reference/items/EC2_cmdlets.html
-#https://docs.aws.amazon.com/powershell/latest/userguide/powershell_ec2_code_examples.html
 
-#https://docs.aws.amazon.com/powershell/latest/reference/items/KeyManagementService_cmdlets.html
+<#
+    https://docs.aws.amazon.com/powershell/latest/reference/items/EC2_cmdlets.html
+    https://docs.aws.amazon.com/powershell/latest/userguide/powershell_ec2_code_examples.html
 
+    https://docs.aws.amazon.com/powershell/latest/reference/items/S3_cmdlets.html
+
+    https://docs.aws.amazon.com/powershell/latest/reference/items/KeyManagementService_cmdlets.html
+#>
 
 
 #Install required PowerShell Modules 
@@ -11,12 +15,14 @@ install-module AWS.tools.autoscaling -Force
 install-module AWS.tools.common -Force
 install-module AWS.tools.ec2 -Force
 Install-Module AWS.Tools.KeyManagementService -Force
+Install-Module AWS.Tools.S3 -Force
 
 import-module AWSLambdaPSCore -Force
 import-module AWS.tools.autoscaling -Force
 import-module AWS.tools.common -Force
 import-module AWS.tools.ec2 -Force
 import-module AWS.Tools.KeyManagementService -Force
+import-module AWS.Tools.S3 -force
 
 Get-Module
 
@@ -25,11 +31,12 @@ Set-defaultAWSRegion -Region us-east-1
 
 #Declare Subnet for VPV
 $cidr = "10.0.99"
-$whatsMyIP = "91.49.195.13"    #Enter your IP home or business will be used for allowing RDP traffic into Server
+$whatsMyIP = "32.56.193.15"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
 
 #Create Key pair - keep pen file safe for later use - for unencrypting local accout passwords
 $dateToday = get-date -format "yyyy-MM-dd"
+$dateTodaySeconds = get-date -format "yyyy-MM-dd-ss"
 $pwdpath = (get-location).path  
 $newKeyPair = New-EC2KeyPair -KeyName "$($dateToday)-KP" -KeyFormat pem -KeyType rsa
 $keyPairMaterial = $newKeyPair.KeyMaterial > "$($pwdPath)\$($dateToday)-KP.pem"
@@ -196,9 +203,15 @@ start-sleep 10
         Start-Sleep -Seconds 10
 New-EC2Route -RouteTableId $Ec2RouteTable.RouteTableId -DestinationCidrBlock "192.168.2.0/24" -TransitGatewayId $transitGateID
 
-New-EC2VpnGateway
+#no caps allowed in name
+$news3Bucket = New-S3Bucket -BucketName "auto-domain-create-$($dateTodaySeconds)" -Force
+$s3BucketName = $news3Bucket.BucketName
 
-
+<#
+Write-S3Object -BucketName test-files -Folder .\Scripts -KeyPrefix SampleScripts\
+Write-S3Object -BucketName test-fi-les -Folder .\Scripts -KeyPrefix SampleScripts\ -SearchPattern *.ps1
+#>
+Write-S3Object -BucketName $s3BucketName Domain -Folder C:\Users\Admin\Desktop\VPC\Domain -Force
 
 #Endpoints
 <#

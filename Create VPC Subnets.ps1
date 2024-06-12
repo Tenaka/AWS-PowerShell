@@ -22,7 +22,7 @@ Set-defaultAWSRegion -Region us-east-1
 
 #Declare Subnet for VPV
 $cidr = "10.0.99"
-$whatsMyIP = "92.40.196.105"    #Enter your IP home or business will be used for allowing RDP traffic into Server
+$whatsMyIP = "96.45.193.15"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
 
 #Create Key pair - keep pen file safe for later use - for unencrypting local accout passwords

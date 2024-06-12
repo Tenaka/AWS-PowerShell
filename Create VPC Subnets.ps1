@@ -20,19 +20,25 @@ Get-Module
 Set-defaultAWSRegion -Region us-east-1
 #####Set-AWSCredential -AccessKey A -SecretKey F - enter creds here
 
-
+#Declare Subnet for VPV
 $cidr = "10.0.99"
+$whatsMyIP = "92.40.196.105"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
 
-#Create Key pair - keep pen file safe for later use
+#Create Key pair - keep pen file safe for later use - for unencrypting local accout passwords
 $dateToday = get-date -format "yyyy-MM-dd"
 $pwdpath = (get-location).path  
 $newKeyPair = New-EC2KeyPair -KeyName "$($dateToday)-KP" -KeyFormat pem -KeyType rsa
 $keyPairMaterial = $newKeyPair.KeyMaterial > "$($pwdPath)\$($dateToday)-KP.pem"
 
 
-#New KMS value requires  AWS.Tools.KeyManagementService module
-
+#New Key Management Service (KMS) value requires  AWS.Tools.KeyManagementService module
+#Not sure how to set Alias
+$newKMSKey = New-KMSKey -KeyUsage ENCRYPT_DECRYPT -Description "$($cidr).0/27 - KMS"
+$tag = New-Object Amazon.KeyManagementService.Model.Tag
+$tag.TagKey = "Name"
+$tag.TagValue = "$($cidr).0/27 - KMS"
+Add-KMSResourceTag -KeyId $newKMSKey.keyid -Tags $tag
 
 #VPC
 <#
@@ -111,19 +117,24 @@ Register-EC2RouteTable -RouteTableId $Ec2RouteTable.RouteTableId -SubnetId $SubP
 
     [Amazon.EC2.Model.IpPermission]::new() | Get-Member -MemberType Property
 #>
-$SecurityGroup = New-EC2SecurityGroup -Description "Rempote Mgmt Ports" -GroupName "RemoteMgmtPorts2" -VpcId $vpdID -Force
+$SecurityGroup = New-EC2SecurityGroup -Description "Remote Mgmt Ports" -GroupName "RemoteMgmtPorts" -VpcId $vpdID -Force
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
 $tag.Value = "RemoteMgmtPorts"
 New-EC2Tag -Resource $securityGroup -Tag $tag
 #Inbound Rules
-$InTCP22 = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="10.0.0.0/32"}
-$InTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="10.0.0.0/32"}
+$InTCP22 = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="10.0.0.0/27"}
+$InTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="10.0.0.0/27"}
+$InTCPWhatmyIP = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="$($whatsMyIP)/32"}
+
+
 Grant-EC2SecurityGroupIngress -GroupId $SecurityGroup -IpPermission @( $InTCP22, $InTCP3389 )
+
 #Outbound Rules
-$EgTCP22 = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="10.0.0.0/32" }
-$EgTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="10.0.0.0/32" }
+$EgTCP22 = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="10.0.0.0/27" }
+$EgTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="10.0.0.0/27" }
 Grant-EC2SecurityGroupEgress -GroupId $SecurityGroup -IpPermission @( $EgTCP22, $EgTCP3389 )
+
 #Remove the default any any outbound rule
 $InRvDefault = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="0.0.0.0/0" }
 Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroup -IpPermission $InRvDefault

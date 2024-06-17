@@ -1,6 +1,6 @@
 
 <#
-    This has limited error handling and is only for testing
+    This has limited error handling, its not production and is in dev
 
     Requires Powershell version 7
 

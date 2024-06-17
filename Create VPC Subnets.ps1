@@ -1,5 +1,7 @@
 
 <#
+    This has limited error handling and is only for testing
+
     Requires Powershell version 7
 
     https://docs.aws.amazon.com/powershell/latest/reference/items/EC2_cmdlets.html
@@ -14,6 +16,7 @@
     version 0.1
 #>
 #Execution of script directory location
+<#
 if($psise -ne $null)
 {
     $ISEPath = $psise.CurrentFile.FullPath
@@ -24,6 +27,10 @@ else
 {
     $pwdPath = split-path -parent $MyInvocation.MyCommand.Path
 }
+#>
+
+#vsc path
+$pwd = "C:\Users\Admin\Desktop\VPC"
 
 #Install required PowerShell Modules 
 install-module AWSLambdaPSCore -Force
@@ -49,9 +56,12 @@ Set-defaultAWSRegion -Region $region1
 #####Set-AWSCredential -AccessKey A -SecretKey F - enter creds here
 
 #Declare Subnet for VPV
-$cidr = "10.0.99"
-$whatsMyIP = "1.1.1.1"    #Enter your IP home or business will be used for allowing RDP traffic into Server
+$cidr = "10.1.99"
+$cidrFull = "$($cidr).0/24"
+$whatsMyIP = "86.179.154.233"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
+#Transit Gateway Route
+$transitRoute = "192.168.0.1"
 
 #Create Key pair - keep pen file safe for later use - for unencrypting local accout passwords
 $dateToday = get-date -format "yyyy-MM-dd"
@@ -68,18 +78,18 @@ $tag.TagKey = "Name"
 $tag.TagValue = "$($cidr).0/27 - KMS"
 Add-KMSResourceTag -KeyId $newKMSKey.keyid -Tags $tag
 #no spaces allowed with Alias
-New-KMSAlias -TargetKeyId $newKMSKey.keyid -AliasName "alias/KMS-for-Encrypting-Volumes"
+New-KMSAlias -TargetKeyId $newKMSKey.keyid -AliasName "alias/KMS-for-Encrypting-Volumes-$($dateToday)"
 
 #VPC
 <#
     Get-EC2Vpc -VpcId vpc-12345678
 #>
-$newVPC = new-ec2vpc -CidrBlock "$($cidr).0/24"
+$newVPC = new-ec2vpc -CidrBlock "$cidrFull"
 $vpcID = $newVPC.VpcId
 $tagVPCValue = "VPCValue"
 $tag=@()
 $tags = New-Object Amazon.EC2.Model.Tag
-$tags = @( @{key="Name";value="VPC $($cidr).0/24"}, `
+$tags = @( @{key="Name";value="VPC $cidrFull"}, `
            @{key="VPCTag";value="Some Tag Example"} )
 New-EC2Tag -Resource $vpcID -Tag $tags 
 
@@ -89,7 +99,7 @@ New-EC2Tag -Resource $vpcID -Tag $tags
     New-EC2Subnet -VpcId vpc-12345678 -CidrBlock 10.0.0.0/24
     Get-EC2Subnet -SubnetId subnet-1a2b3c4d
 #>
-$Ec2subnetPub = New-EC2Subnet -CidrBlock "$($cidr).0/27"  -VpcId $vpdID
+$Ec2subnetPub = New-EC2Subnet -CidrBlock "$($cidr).0/27"  -VpcId $vpcID 
 $SubPubID = $ec2subnetPub.SubnetId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
@@ -97,7 +107,7 @@ $tag.Value = "$($cidr).0/27 - Public Subnet"
 New-EC2Tag -Resource $Ec2subnetPub.SubnetId -Tag $tag
 ###Edit-EC2SubnetAttribute -SubnetId $ec2subnetPub.SubnetId -MapPublicIpOnLaunch $true
 
-$Ec2subnetPriv = new-EC2Subnet -CidrBlock "$($cidr).32/27"  -VpcId $vpdID
+$Ec2subnetPriv = new-EC2Subnet -CidrBlock "$($cidr).32/27"  -VpcId $vpcID 
 $SubPrivID = $Ec2subnetPriv.SubnetId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
@@ -110,7 +120,7 @@ New-EC2Tag -Resource $Ec2subnetPriv.SubnetId -Tag $tag
 #>
 $Ec2InternetGateway = New-EC2InternetGateway
 $InterGatewayID = $Ec2InternetGateway.InternetGatewayId
-Add-EC2InternetGateway -InternetGatewayId $Ec2InternetGateway.InternetGatewayId -VpcId $vpdID
+Add-EC2InternetGateway -InternetGatewayId $Ec2InternetGateway.InternetGatewayId -VpcId $vpcID 
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
 $tag.Value = "$cidr-InternetGateway"
@@ -127,10 +137,10 @@ $Ec2RouteTablePub = New-EC2RouteTable -VpcId $vpcID
 $Ec2RouteTablePubID = $Ec2RouteTablePub.RouteTableId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
-$tag.Value = "$($cidr).32/27 - Public Route"
+$tag.Value = "$($cidr).0/27 - Private Route"
 New-EC2Tag -Resource $Ec2RouteTablePubID -Tag $tag
 New-EC2Route -RouteTableId $Ec2RouteTablePub.RouteTableId -DestinationCidrBlock "0.0.0.0/0" -GatewayId $InterGatewayID
-Register-EC2RouteTable -RouteTableId $Ec2RouteTablePub.RouteTableId -SubnetId $SubPubID 
+Register-EC2RouteTable -RouteTableId $Ec2RouteTablePubID -SubnetId $SubPubID 
 
 
 #Private Route Table
@@ -140,8 +150,7 @@ $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
 $tag.Value = "$($cidr).32/27 - Public Route"
 New-EC2Tag -Resource $Ec2RouteTablerivID -Tag $tag
-New-EC2Route -RouteTableId $Ec2RouteTableriv.RouteTableId -DestinationCidrBlock "0.0.0.0/0" -GatewayId $InterGatewayID
-Register-EC2RouteTable -RouteTableId $Ec2RouteTableriv.RouteTableId -SubnetId $SubPrivID 
+Register-EC2RouteTable -RouteTableId $Ec2RouteTablerivID -SubnetId $SubPrivID 
 
 
 #Create Security group and firewall rule for RDP
@@ -169,22 +178,22 @@ $SecurityGroupPriv = New-EC2SecurityGroup -Description "Private Security Group" 
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
 $tag.Value = "PrivateSubnet"
-New-EC2Tag -Resource $SecurityGroupPub -Tag $tag
+New-EC2Tag -Resource $SecurityGroupPriv -Tag $tag
 
 #Inbound Rules
-$InTCPWinRm = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="10.0.0.0/27"}
-$InTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="10.0.0.0/27"}
+$InTCPWinRm = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges=$cidrFull}
+$InTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges=$cidrFull}
 $InTCPWhatmyIP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="$($whatsMyIP)/32"}
 $InTCPWhatmyIPWinRM = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="$($whatsMyIP)/32"}
 
 #Outbound Rules
-$EgTCPWinRM = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="10.0.0.0/27" }
-$EgTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="10.0.0.0/27" }
+$EgTCPWinRM = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges=$cidrFull }
+$EgTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges=$cidrFull }
 $EgTCP443 = @{ IpProtocol="tcp"; FromPort="443"; ToPort="443"; IpRanges="0.0.0.0/0" }
 
 #Inbound Rules
-Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPub -IpPermission @( $InTCPWinRm, $InTCP3389,$InTCPWhatmyIP3389, $InTCPWhatmyIPWinRM )
-Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @( $EgTCP443 )
+Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPub -IpPermission @( $InTCP3389, $InTCPWhatmyIP3389, $InTCPWhatmyIPWinRM )
+Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @( $InTCP3389, $InTCPWinRm )
 
 #Outbound Rules
 Grant-EC2SecurityGroupEgress -GroupId $SecurityGroupPub -IpPermission @( $EgTCPWinRM, $EgTCP3389 )
@@ -230,11 +239,17 @@ New-EC2Tag -Resource $transitGateID -Tag $tag
         Start-Sleep 10 
 
 #Transit Gateway attachments - VPC to TG
-$TranGateAttVPC = New-EC2TransitGatewayVpcAttachment -VpcId $vpcID -TransitGatewayId $transitGateID -SubnetId $SubPubID 
+
+# during testing the previous attachment is picked up and is in a deleting a state - add filter to exclude
+<#
+
+#disabled - not required for testing\dev
+
+$TranGateAttVPC = New-EC2TransitGatewayVpcAttachment -VpcId $vpcID -TransitGatewayId $transitGateID -SubnetId $SubPrivID
 $TranGateAttVPCID = $TranGateAttVPC.TransitGatewayAttachmentId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
-$tag.Value = "$($cidr).32/27 - Transit Gateway VPC Attachment to Public Subnet"
+$tag.Value = "$($cidr).0/27 - Transit Gateway VPC Attachment to Private Subnet"    #make this a var
 New-EC2Tag -Resource $TranGateAttVPCID -Tag $tag
 start-sleep 10
     while((Get-EC2TransitGatewayAttachment -TransitGatewayAttachmentId $TranGateAttVPCID).state.Value -Notcontains 'available')
@@ -244,11 +259,13 @@ start-sleep 10
         }
 
         Start-Sleep -Seconds 10
-New-EC2Route -RouteTableId $Ec2RouteTablePub.RouteTableId -DestinationCidrBlock "192.168.2.0/24" -TransitGatewayId $transitGateID
+New-EC2Route -RouteTableId $Ec2RouteTablePub.RouteTableId -DestinationCidrBlock $transitRoute -TransitGatewayId $transitGateID
 
 #no caps allowed in name
 $news3Bucket = New-S3Bucket -BucketName "auto-domain-create-$($dateTodaySeconds)" -Force
 $s3BucketName = $news3Bucket.BucketName
+
+
 
 <#
     S3
@@ -257,7 +274,9 @@ $s3BucketName = $news3Bucket.BucketName
 #>
 
 #use this when testing from within VSC
-Write-S3Object -BucketName $s3BucketName Domain -Folder C:\Users\Admin\Desktop\VPC\Domain -Force
+#Write-S3Object -BucketName $s3BucketName Domain -Folder C:\Users\Admin\Desktop\VPC\Domain -Force
+
+
 
 #Use this when running from native powershell
 #Write-S3Object -BucketName $s3BucketName Domain -Folder "$($pwdPath)\Domain" -Force
@@ -268,7 +287,7 @@ Write-S3Object -BucketName $s3BucketName Domain -Folder C:\Users\Admin\Desktop\V
 
         com.amazonaws.us-east-1.s3
 #> 
-$newEnpointS3 = New-EC2VpcEndpoint -ServiceName com.amazonaws.us-east-1.s3 -RouteTableId $Ec2RouteTablePriv -VpcEndpointType Gateway -VpcId $vpdID
+$newEnpointS3 = New-EC2VpcEndpoint -ServiceName com.amazonaws.us-east-1.s3 -RouteTableId $Ec2RouteTablePriv -VpcEndpointType Gateway -VpcId $vpcID 
 $newEnpointS3ID = $newEnpointS3.VpcEndpoint.VpcEndpointId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
@@ -296,6 +315,18 @@ $new2022InstancePriv = New-EC2Instance `
 
 
 #Create an EC2 Instance - Private Instance
+<#
+<powershell>
+Rename-Computer -NewName "Server044"
+Restart-Computer
+</powershell>
+
+
+
+
+#>
+
+
 $new2022InstancePriv = New-EC2Instance `
     -ImageId $gtSrv2022AMI.value `
     -MinCount 1 -MaxCount 1 `

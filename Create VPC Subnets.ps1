@@ -49,11 +49,23 @@ import-module AWS.Tools.KeyManagementService -Force
 import-module AWS.Tools.S3 -force
 import-module AWS.Tools.SimpleSystemsManagement -force
 
+#List out imported moduels
 Get-Module
-$region1 = "us-east-1"
 
+#####Set-AWSCredential -AccessKey -SecretKey
+try
+    {
+        Set-AWSCredentials -AccessKey $accessKey -SecretKey $secretKey 
+    }
+catch
+    {
+        $accessKey = Read-Host "Enter Access Key"
+        $secretKey = Read-Host "Enter Secret Key"
+        Set-AWSCredentials -AccessKey $accessKey -SecretKey $secretKey 
+    }
+
+$region1 = "us-east-1"
 Set-defaultAWSRegion -Region $region1
-#####Set-AWSCredential -AccessKey A -SecretKey F - enter creds here
 
 #Declare Subnet for VPV
 $cidr = "10.1.99"

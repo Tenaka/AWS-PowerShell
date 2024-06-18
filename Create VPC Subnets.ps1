@@ -89,7 +89,7 @@ Set-defaultAWSRegion -Region $region1
 #Declare Subnet for VPV
 $cidr = "10.1.99"      # Dont use "10.1.250.0/24" as this is assigned to Transit Gateway and another VPC
 $cidrFull = "$($cidr).0/24"
-$whatsMyIP = "86.179.154.233"    #Enter your IP home or business will be used for allowing RDP traffic into Server
+$whatsMyIP = "123.123.123.123"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
 #Transit Gateway Route to another VPC
 $transitRoute = "10.1.250.0/24"

@@ -1,8 +1,23 @@
 
 <#
+    READ ME
+    Security Credentials are required
+
+    Go to IAM and create a user
+    Add AmazonEC2FullAccess, AmazonS3FullAccess, AWSKeyManagementServicePowerUser, AmazonSSMReadOnlyAccess Roles
+
+    If all ele fails add the 'AdministratorAccess' Role
+
+    Click into the new user account and select the Security Credential tab
+
+    Create an Access Key and record output - the script will prompt if aws credentials are missing.
+
+    Dont hardcode the access key and secret into the script
+
+
     This has limited error handling, its not production and is in dev
 
-    Requires Powershell version 7
+    Requires Powershell version 7 or Visual Studio Code
 
     https://docs.aws.amazon.com/powershell/latest/reference/items/EC2_cmdlets.html
     https://docs.aws.amazon.com/powershell/latest/userguide/powershell_ec2_code_examples.html
@@ -14,6 +29,7 @@
     https://docs.aws.amazon.com/powershell/latest/reference/items/SimpleSystemsManagement_cmdlets.html
 
     version 0.1
+
 #>
 #Execution of script directory location
 <#
@@ -29,8 +45,8 @@ else
 }
 #>
 
-#vsc path
-$pwd = "C:\Users\Admin\Desktop\VPC"
+#vsc path - set whilst in dev
+$pwdPath = "C:\Users\Admin\Desktop\VPC"
 
 #Install required PowerShell Modules 
 install-module AWSLambdaPSCore -Force
@@ -49,12 +65,15 @@ import-module AWS.Tools.KeyManagementService -Force
 import-module AWS.Tools.S3 -force
 import-module AWS.Tools.SimpleSystemsManagement -force
 
-#List out imported moduels
+#List out imported modules
 Get-Module
 
 #####Set-AWSCredential -AccessKey -SecretKey
 try
     {
+        $gtAWSCreds = Get-AWSCredentials
+        $accessKey = $gtAWSCreds.GetCredentials().AccessKey
+        $secretKey = $gtAWSCreds.GetCredentials().SecretKey
         Set-AWSCredentials -AccessKey $accessKey -SecretKey $secretKey 
     }
 catch
@@ -68,14 +87,14 @@ $region1 = "us-east-1"
 Set-defaultAWSRegion -Region $region1
 
 #Declare Subnet for VPV
-$cidr = "10.1.99"
+$cidr = "10.1.99"      # Dont use "10.1.250.0/24" as this is assigned to Transit Gateway and another VPC
 $cidrFull = "$($cidr).0/24"
 $whatsMyIP = "86.179.154.233"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
-#Transit Gateway Route
-$transitRoute = "192.168.0.1"
+#Transit Gateway Route to another VPC
+$transitRoute = "10.1.250.0/24"
 
-#Create Key pair - keep pen file safe for later use - for unencrypting local accout passwords
+#Create Key pair - keep pen file safe for later use - for unencrypting local account passwords
 $dateToday = get-date -format "yyyy-MM-dd"
 $dateTodaySeconds = get-date -format "yyyy-MM-dd-ss"
 $pwdpath = (get-location).path  
@@ -104,7 +123,6 @@ $tags = New-Object Amazon.EC2.Model.Tag
 $tags = @( @{key="Name";value="VPC $cidrFull"}, `
            @{key="VPCTag";value="Some Tag Example"} )
 New-EC2Tag -Resource $vpcID -Tag $tags 
-
 
 #Subnets
 <#
@@ -203,16 +221,19 @@ $EgTCPWinRM = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges=$cid
 $EgTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges=$cidrFull }
 $EgTCP443 = @{ IpProtocol="tcp"; FromPort="443"; ToPort="443"; IpRanges="0.0.0.0/0" }
 
-#Inbound Rules
-Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPub -IpPermission @( $InTCP3389, $InTCPWhatmyIP3389, $InTCPWhatmyIPWinRM )
-Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @( $InTCP3389, $InTCPWinRm )
+#PUBLIC
+Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPub -IpPermission @( $InTCPWhatmyIP3389)
 
-#Outbound Rules
 Grant-EC2SecurityGroupEgress -GroupId $SecurityGroupPub -IpPermission @( $EgTCPWinRM, $EgTCP3389 )
 
 #Remove the default any any outbound rule
 $InRvDefault = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="0.0.0.0/0" }
 Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroupPub -IpPermission $InRvDefault
+
+
+#PRIVATE
+Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @( $InTCP3389, $InTCPWinRm )
+
 
 #NACLs
 <#
@@ -248,12 +269,12 @@ New-EC2Tag -Resource $transitGateID -Tag $tag
                 Write-Host $transitGateID is (Get-EC2TransitGateway -TransitGatewayId $transitGateID).state.Value
             Start-Sleep 10
         }
-        Start-Sleep 10 
+        Start-Sleep 30    #still working on this, but looks like it reports as available before it is able to attach  
 
 #Transit Gateway attachments - VPC to TG
 
 # during testing the previous attachment is picked up and is in a deleting a state - add filter to exclude
-<#
+
 
 #disabled - not required for testing\dev
 
@@ -276,22 +297,14 @@ New-EC2Route -RouteTableId $Ec2RouteTablePub.RouteTableId -DestinationCidrBlock 
 #no caps allowed in name
 $news3Bucket = New-S3Bucket -BucketName "auto-domain-create-$($dateTodaySeconds)" -Force
 $s3BucketName = $news3Bucket.BucketName
-
-
-
 <#
     S3
     Write-S3Object -BucketName test-files -Folder .\Scripts -KeyPrefix SampleScripts\
     Write-S3Object -BucketName test-fi-les -Folder .\Scripts -KeyPrefix SampleScripts\ -SearchPattern *.ps1
 #>
 
-#use this when testing from within VSC
-#Write-S3Object -BucketName $s3BucketName Domain -Folder C:\Users\Admin\Desktop\VPC\Domain -Force
-
-
-
 #Use this when running from native powershell
-#Write-S3Object -BucketName $s3BucketName Domain -Folder "$($pwdPath)\Domain" -Force
+Write-S3Object -BucketName $s3BucketName Domain -Folder "$($pwdPath)\Domain" -Force
 
 #Endpoints
 <#
@@ -317,36 +330,47 @@ $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 
     $_.name -notmatch "TPM-"}
 
 #Create an EC2 Instance - Private Instance
-$new2022InstancePriv = New-EC2Instance `
+$new2022InstancePub = New-EC2Instance `
     -ImageId $gtSrv2022AMI.value `
     -MinCount 1 -MaxCount 1 `
     -KeyName $newKeyPair.KeyName `
-    -SecurityGroupId $SecurityGroupPriv `
+    -SecurityGroupId $SecurityGroupPub `
     -InstanceType t1.micro `
-    -SubnetId $SubPrivID
+    -SubnetId $SubPubID
 
+$new2022InstancePubID = $new2022InstancePriv.Instances.InstanceId
+$tag = New-Object Amazon.EC2.Model.Tag
+$tag.Key = "Name"
+$tag.Value = "$($cidr).0/27 - Public RDP Jump Box to Private"
+New-EC2Tag -Resource $new2022InstancePubID -Tag $tag    
+
+#check for instance state
 
 #Create an EC2 Instance - Private Instance
 <#
-<powershell>
-Rename-Computer -NewName "Server044"
-Restart-Computer
-</powershell>
-
-
-
-
+    <powershell>
+    Rename-Computer -NewName "Server044"
+    Restart-Computer
+    </powershell>
 #>
-
 
 $new2022InstancePriv = New-EC2Instance `
     -ImageId $gtSrv2022AMI.value `
     -MinCount 1 -MaxCount 1 `
     -KeyName $newKeyPair.KeyName `
-    -SecurityGroupId $SecurityGroupPub  `
+    -SecurityGroupId $SecurityGroupPriv  `
     -InstanceType t1.micro `
-    -SubnetId $SubPubID
-    -UserDataFile "String here"
+    -SubnetId $SubPrivID 
 
+    <#
+    -UserDataFile "Add DC Promo Script here"
+    #>
 
+    $new2022InstancePrivID = $new2022InstancePriv.Instances.InstanceId
+    $tag = New-Object Amazon.EC2.Model.Tag
+    $tag.Key = "Name"
+    $tag.Value = "$($cidr).32/27 - Private Domain Controller"
+    New-EC2Tag -Resource $new2022InstancePrivID  -Tag $tag    
+
+    #check for instance state
 

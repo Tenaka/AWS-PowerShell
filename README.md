@@ -1,3 +1,5 @@
 # AWS-PowerShell
 
-Some random AWS PowerShell commands to make my life easier
+This is in Dev and will not work as is
+
+The plan is to make it deploy an entire VPC with a public jump box with access to a self provisioned Doman Controller

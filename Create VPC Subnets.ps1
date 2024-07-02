@@ -4,7 +4,7 @@
     Security Credentials are required
 
     Go to IAM and create a user
-    Add AmazonEC2FullAccess, AmazonS3FullAccess, AWSKeyManagementServicePowerUser, AmazonSSMReadOnlyAccess Roles
+    Add AmazonEC2FullAccess, AmazonS3FullAccess, AWSKeyManagementServicePowerUser, AmazonSSMReadOnlyAccess, AWSKeyManagementServicePowerUser Roles
 
     If all ele fails add the 'AdministratorAccess' Role
 
@@ -87,12 +87,12 @@ $region1 = "us-east-1"
 Set-defaultAWSRegion -Region $region1
 
 #Declare Subnet for VPV
-$cidr = "10.1.99"      # Dont use "10.1.250.0/24" as this is assigned to Transit Gateway and another VPC
+$cidr = "10.2.99"      # Dont use "10.1.250.0/24" as this is assigned to Transit Gateway and another VPC
 $cidrFull = "$($cidr).0/24"
-$whatsMyIP = "123.123.123.124"    #Enter your IP home or business will be used for allowing RDP traffic into Server
+$whatsMyIP = "217.35.240.252"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
 #Transit Gateway Route to another VPC
-$transitRoute = "10.1.250.0/24"
+$transitRoute = "10.2.250.0/24"
 
 #Create Key pair - keep pen file safe for later use - for unencrypting local account passwords
 $dateToday = get-date -format "yyyy-MM-dd"
@@ -278,6 +278,7 @@ New-EC2Tag -Resource $transitGateID -Tag $tag
 
 #disabled - not required for testing\dev
 
+<#
 $TranGateAttVPC = New-EC2TransitGatewayVpcAttachment -VpcId $vpcID -TransitGatewayId $transitGateID -SubnetId $SubPrivID
 $TranGateAttVPCID = $TranGateAttVPC.TransitGatewayAttachmentId
 $tag = New-Object Amazon.EC2.Model.Tag
@@ -293,6 +294,8 @@ start-sleep 10
 
         Start-Sleep -Seconds 10
 New-EC2Route -RouteTableId $Ec2RouteTablePub.RouteTableId -DestinationCidrBlock $transitRoute -TransitGatewayId $transitGateID
+
+#>
 
 #no caps allowed in name
 $news3Bucket = New-S3Bucket -BucketName "auto-domain-create-$($dateTodaySeconds)" -Force
@@ -312,12 +315,15 @@ Write-S3Object -BucketName $s3BucketName Domain -Folder "$($pwdPath)\Domain" -Fo
 
         com.amazonaws.us-east-1.s3
 #> 
-$newEnpointS3 = New-EC2VpcEndpoint -ServiceName com.amazonaws.us-east-1.s3 -RouteTableId $Ec2RouteTablePriv -VpcEndpointType Gateway -VpcId $vpcID 
+$newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -RouteTableId $Ec2RouteTablePriv.RouteTableId -VpcEndpointType Gateway -VpcId $vpcID 
 $newEnpointS3ID = $newEnpointS3.VpcEndpoint.VpcEndpointId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
-$tag.Value = "$($cidr).32/27 - S3 Bucket Endpoing"
+$tag.Value = "S3-Bucket-Endpoint"
 New-EC2Tag -Resource $newEnpointS3ID -Tag $tag
+
+#Enforce EC2 Volume Encryption - need to enable ebs encryption with KMS and not the AWS key
+Enable-EC2EbsEncryptionByDefault -Region $region1
 
 <#
     EC2 Instances
@@ -329,6 +335,25 @@ $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 
     $_.name -match "English" -and     `
     $_.name -notmatch "TPM-"}
 
+<#
+    -BlockDeviceMapping
+
+    $kms = New-KMSKey
+
+    #Build BlockDeviceMapping and EBSBlockDevice
+    $bdm = New-Object Amazon.EC2.Model.BlockDeviceMapping
+    $ebs = New-Object Amazon.EC2.Model.EbsBlockDevice
+    $bdm.VirtualName = "ephemeral0"
+    $bdm.DeviceName = "/dev/sda1"
+    $bdm.EBS = $ebs
+    $ebs.VolumeSize = 60
+    $ebs.VolumeType = 'standard'
+    $ebs.Encrypted = $true
+    $ebs.KmsKeyId = $kms.KeyId
+
+#>
+
+
 #Create an EC2 Instance - Private Instance
 $new2022InstancePub = New-EC2Instance `
     -ImageId $gtSrv2022AMI.value `
@@ -338,7 +363,7 @@ $new2022InstancePub = New-EC2Instance `
     -InstanceType t1.micro `
     -SubnetId $SubPubID
 
-$new2022InstancePubID = $new2022InstancePriv.Instances.InstanceId
+$new2022InstancePubID = $new2022InstancePub.Instances.InstanceId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
 $tag.Value = "$($cidr).0/27 - Public RDP Jump Box to Private"
@@ -360,17 +385,21 @@ $new2022InstancePriv = New-EC2Instance `
     -KeyName $newKeyPair.KeyName `
     -SecurityGroupId $SecurityGroupPriv  `
     -InstanceType t1.micro `
-    -SubnetId $SubPrivID 
+    -SubnetId $SubPrivID `
+    -UserData "<powershell>
+    Rename-Computer -NewName "TENAKADC01"
+    Restart-Computer
+    </powershell>"
 
     <#
     -UserDataFile "Add DC Promo Script here"
     #>
 
-    $new2022InstancePrivID = $new2022InstancePriv.Instances.InstanceId
-    $tag = New-Object Amazon.EC2.Model.Tag
-    $tag.Key = "Name"
-    $tag.Value = "$($cidr).32/27 - Private Domain Controller"
-    New-EC2Tag -Resource $new2022InstancePrivID  -Tag $tag    
+$new2022InstancePrivID = $new2022InstancePriv.Instances.InstanceId
+$tag = New-Object Amazon.EC2.Model.Tag
+$tag.Key = "Name"
+$tag.Value = "$($cidr).32/27 - Private Domain Controller"
+New-EC2Tag -Resource $new2022InstancePrivID  -Tag $tag    
 
     #check for instance state
 

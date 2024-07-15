@@ -103,7 +103,7 @@ Set-defaultAWSRegion -Region $region1
 #Declare Subnet for VPV
 $cidr = "10.2.99"      # Dont use "10.1.250.0/24" as this is assigned to Transit Gateway and another VPC
 $cidrFull = "$($cidr).0/24"
-$whatsMyIP = "1.1.1.1"    #Enter your IP home or business will be used for allowing RDP traffic into Server
+$whatsMyIP = "217.44.82.238"    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
 #Transit Gateway Route to another VPC
 $transitRoute = "10.2.250.0/24"
@@ -312,18 +312,48 @@ New-EC2Route -RouteTableId $Ec2RouteTablePub.RouteTableId -DestinationCidrBlock 
 
 #>
 
-#no caps allowed in name
-$news3Bucket = New-S3Bucket -BucketName "auto-domain-create-$($dateTodaySeconds)" -Force
-$s3BucketName = $news3Bucket.BucketName
-
-$s3Url = "https://$($s3BucketName).s3.amazonaws.com/Domain/"
-
-
 <#
     S3
     Write-S3Object -BucketName test-files -Folder .\Scripts -KeyPrefix SampleScripts\
     Write-S3Object -BucketName test-fi-les -Folder .\Scripts -KeyPrefix SampleScripts\ -SearchPattern *.ps1
+
+    https://docs.aws.amazon.com/powershell/latest/reference/items/Get-S3Bucket.html
+    
 #>
+
+#no caps allowed in name
+<#
+{
+    "Version": "2012-10-17",
+    "Id": "Policy1415115909152",
+    "Statement": [
+        {
+            "Sid": "Access-to-specific-VPCE-only",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": "arn:aws:s3:::auto-domain-create-2024-07-12-08/*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:sourceVpce": "vpce-09f665820d1a4c1af"
+                }
+            }
+        }
+    ]
+}
+
+#>
+
+
+$news3Bucket = New-S3Bucket -BucketName "auto-domain-create-$($dateTodaySeconds)" -Force
+$s3BucketName = $news3Bucket.BucketName
+$S3BucketARN = "arn:aws:s3:::$($s3BucketName)"
+
+$s3Url = "https://$($s3BucketName).s3.amazonaws.com/Domain/"
+
+
+
+
 
 #Use this when running from native powershell
 Write-S3Object -BucketName $s3BucketName Domain -Folder $domainZip -Force
@@ -337,6 +367,7 @@ Write-S3Object -BucketName $s3BucketName Domain -Folder $domainZip -Force
 #$newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Interface -VpcId $vpcID -SecurityGroupId $SecurityGroupPriv -SubnetId $SubPrivID 
 
 $newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Gateway -VpcId $vpcID -RouteTableId $Ec2RouteTablePubID,$Ec2RouteTablePrivID
+
 $newEnpointS3ID = $newEnpointS3.VpcEndpoint.VpcEndpointId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
@@ -381,6 +412,38 @@ $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 
 
         #start-process powershell -wait -verb -argumentlist '-file c:\downloads\script.ps1'
 #>
+$RDPScript = 
+'<powershell>
+
+        Set-LocalUser -Name "administrator" -Password (ConvertTo-SecureString -AsPlainText ChangeMe1234 -Force)
+        Rename-Computer -NewName "JUMPBOX1"    
+        shutdown /r /t 10
+
+</powershell>'
+
+$RDPUserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($RDPScript))
+
+
+#Create an EC2 Instance - Public Instance Jump Box
+$new2022InstancePub = New-EC2Instance `
+    -ImageId $gtSrv2022AMI.value `
+    -MinCount 1 -MaxCount 1 `
+    -KeyName $newKeyPair.KeyName `
+    -SecurityGroupId $SecurityGroupPub `
+    -InstanceType t3.medium `
+    -SubnetId $SubPubID `
+    -UserData $RDPUserData
+
+$new2022InstancePubID = $new2022InstancePub.Instances.InstanceId
+$tag = New-Object Amazon.EC2.Model.Tag
+$tag.Key = "Name"
+$tag.Value = "$($cidr).0/27 - Public RDP Jump Box to Private"
+New-EC2Tag -Resource $new2022InstancePubID -Tag $tag    
+
+##to do - add elastic IP to RDP instance
+#new-ec2
+
+
 $domScript = 
 '<powershell>
 
@@ -393,51 +456,45 @@ $domScript =
             {New-Item $pwdPath -ItemType Directory -Force}
 
         $pwdDomain = "$($pwdPath)\Domain\"    
-        Copy-S3Object auto-domain-create-2024-07-12-08  -key Domain/AD-AWS.zip -LocalFile "$($pwdDomain)\AD-AWS.zip"
+        Copy-S3Object auto-domain-create-2024-07-12-08 -key Domain/AD-AWS.zip -LocalFile "$($pwdDomain)\AD-AWS.zip"
 
         Expand-Archive -Path "$($$pwdDomain)\AD-AWS.zip" -DestinationPath $pwdPath -Force
         $domainScript = "$($pwdPath)\AD-AWS\"   
 
+        #These need to match the json within the Zip file
         Set-LocalUser -Name "administrator" -Password (ConvertTo-SecureString -AsPlainText ChangeMe1234 -Force)
-        Rename-Computer -NewName "AWSDC01"
+        
+        ###### DC
+        #Autologon
+        $adminGet = gwmi win32_useraccount | where {$_.name -eq "administrator"}
+        $sidGet = $adminGet.SID
+
+        #Sets Autologon Reg keys and credentials
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoAdminLogon -Value 1 -Force
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -Value "administrator" -Force
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -Value "ChangeMe1234" -Force
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonSID -Value $sidGet -Force
+        New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonCount -Value 0 -PropertyType string -Force
+
+        $schTaskName = "AWSDCPromo"
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+        $NTSystem = "NT Authority\System"
+        $battery = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries 
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-executionPolicy bypass -file "C:\AWS-Domain\AD-AWS\dcPromo.ps1"
+        Register-ScheduledTask -TaskName $schTaskName -Trigger $trigger -Settings $battery -User Administrator -Action $action -RunLevel Highest -Force
+  
+
+        Rename-Computer -NewName "AWSDC01" 
       
         start-sleep 10
 
-        start-process powershell -wait -verb runas -argumentlist "-file C:\AWS-Domain\AD-AWS\dcPromo.ps1" 
+        shutdown /r /t 0
+
+        #start-process powershell -wait -verb runas -argumentlist "-file C:\AWS-Domain\AD-AWS\dcPromo.ps1" 
 
     </powershell>'
 
 $UserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($domScript))
-
-#Create an EC2 Instance - Public Instance Jump Box
-$new2022InstancePub = New-EC2Instance `
-    -ImageId $gtSrv2022AMI.value `
-    -MinCount 1 -MaxCount 1 `
-    -KeyName $newKeyPair.KeyName `
-    -SecurityGroupId $SecurityGroupPub `
-    -InstanceType t3.medium `
-    -SubnetId $SubPubID `
-    -UserData $UserData 
-
-$new2022InstancePubID = $new2022InstancePub.Instances.InstanceId
-$tag = New-Object Amazon.EC2.Model.Tag
-$tag.Key = "Name"
-$tag.Value = "$($cidr).0/27 - Public RDP Jump Box to Private"
-New-EC2Tag -Resource $new2022InstancePubID -Tag $tag    
-
-##to do - add elastic IP to RDP instance
-#new-ec2
-
-$RDPScript = 
-'<powershell>
-
-        Set-LocalUser -Name "administrator" -Password (ConvertTo-SecureString -AsPlainText ChangeMe1234 -Force)
-        Rename-Computer -NewName "JUMPBOX1"    
-        shutdown /r /t 10
-
-</powershell>'
-
-$RDPUserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($RDPScript))
 
 $new2022InstancePriv = New-EC2Instance `
     -ImageId $gtSrv2022AMI.value `
@@ -446,7 +503,7 @@ $new2022InstancePriv = New-EC2Instance `
     -SecurityGroupId $SecurityGroupPriv  `
     -InstanceType t3.medium `
     -SubnetId $SubPrivID `
-    -UserData $RDPUserData
+    -UserData $UserData
 
 $new2022InstancePrivID = $new2022InstancePriv.Instances.InstanceId
 $tag = New-Object Amazon.EC2.Model.Tag

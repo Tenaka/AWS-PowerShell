@@ -447,50 +447,48 @@ New-EC2Tag -Resource $new2022InstancePubID -Tag $tag
 $domScript = 
 '<powershell>
 
-        import-module awspowershell
+    import-module awspowershell
 
-        $pwdPath = "C:\AWS-Domain\"
-        try
-            {Get-ChildItem $pwdPath -erroraction Stop}  
-        catch
-            {New-Item $pwdPath -ItemType Directory -Force}
+    $pwdPath = "C:\AWS-Domain\"
+    try
+        {Get-ChildItem $pwdPath -erroraction Stop}  
+    catch
+        {New-Item $pwdPath -ItemType Directory -Force}
 
-        $pwdDomain = "$($pwdPath)\Domain\"    
-        Copy-S3Object auto-domain-create-2024-07-12-08 -key Domain/AD-AWS.zip -LocalFile "$($pwdDomain)\AD-AWS.zip"
+    $pwdDomain = "$($pwdPath)\Domain\"    
+    Copy-S3Object auto-domain-create-2024-07-12-08 -key Domain/AD-AWS.zip -LocalFile "$($pwdDomain)\AD-AWS.zip"
 
-        Expand-Archive -Path "$($pwdDomain)\AD-AWS.zip" -DestinationPath $pwdPath -Force
-        $domainScript = "$($pwdPath)\AD-AWS\"   
+    Expand-Archive -Path "$($pwdDomain)\AD-AWS.zip" -DestinationPath $pwdPath -Force
+    $domainScript = "$($pwdPath)\AD-AWS\"   
 
-        #These need to match the json within the Zip file
-        Set-LocalUser -Name "administrator" -Password (ConvertTo-SecureString -AsPlainText ChangeMe1234 -Force)
-        
-        ###### DC
-        #Autologon
-        $adminGet = gwmi win32_useraccount | where {$_.name -eq "administrator"}
-        $sidGet = $adminGet.SID
+    #These need to match the json within the Zip file
+    Set-LocalUser -Name "administrator" -Password (ConvertTo-SecureString -AsPlainText ChangeMe1234 -Force)
 
-        #Sets Autologon Reg keys and credentials
-        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoAdminLogon -Value 1 -Force
-        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -Value "administrator" -Force
-        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -Value "ChangeMe1234" -Force
-        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonSID -Value $sidGet -Force
-        New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonCount -Value 0 -PropertyType string -Force
+    ###### DC
+    #Autologon
+    $adminGet = gwmi win32_useraccount | where {$_.name -eq "administrator"}
+    $sidGet = $adminGet.SID
 
-        $schTaskName = "AWSDCPromo"
-        $trigger = New-ScheduledTaskTrigger -AtStartup
-        $NTSystem = "NT Authority\System"
-        $battery = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries 
-        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-executionPolicy bypass -file "C:\AWS-Domain\AD-AWS\dcPromo.ps1"
-        Register-ScheduledTask -TaskName $schTaskName -Trigger $trigger -Settings $battery -User Administrator -Action $action -RunLevel Highest -Force
-  
+    #Sets Autologon Reg keys and credentials
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoAdminLogon -Value 1 -Force
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -Value "administrator" -Force
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -Value "ChangeMe1234" -Force
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonSID -Value $sidGet -Force
+    New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonCount -Value 0 -PropertyType string -Force
 
-        Rename-Computer -NewName "AWSDC01" 
-      
-        start-sleep 10
+    $schTaskName = "AWSDCPromo"
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $NTSystem = "NT Authority\System"
+    $battery = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries 
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-executionPolicy bypass -file C:\AWS-Domain\AD-AWS\dcPromo.ps1"
+    Register-ScheduledTask -TaskName $schTaskName -Trigger $trigger -Settings $battery -User Administrator -Action $action -RunLevel Highest -Force
 
-        shutdown /r /t 0
 
-        #start-process powershell -wait -verb runas -argumentlist "-file C:\AWS-Domain\AD-AWS\dcPromo.ps1" 
+    Rename-Computer -NewName "AWSDC01" 
+
+    start-sleep 10
+
+    shutdown /r /t 0
 
     </powershell>'
 

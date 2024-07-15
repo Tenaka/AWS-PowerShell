@@ -458,7 +458,7 @@ $domScript =
         $pwdDomain = "$($pwdPath)\Domain\"    
         Copy-S3Object auto-domain-create-2024-07-12-08 -key Domain/AD-AWS.zip -LocalFile "$($pwdDomain)\AD-AWS.zip"
 
-        Expand-Archive -Path "$($$pwdDomain)\AD-AWS.zip" -DestinationPath $pwdPath -Force
+        Expand-Archive -Path "$($pwdDomain)\AD-AWS.zip" -DestinationPath $pwdPath -Force
         $domainScript = "$($pwdPath)\AD-AWS\"   
 
         #These need to match the json within the Zip file

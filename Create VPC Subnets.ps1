@@ -4,7 +4,7 @@
     Security Credentials are required
 
     Go to IAM and create a user
-    Add AmazonEC2FullAccess, AmazonS3FullAccess, AWSKeyManagementServicePowerUser, AmazonSSMReadOnlyAccess, AWSKeyManagementServicePowerUser Roles
+    Add AmazonEC2FullAccess, AmazonS3FullAccess, AWSKeyManagementServicePowerUser, AmazonSSMReadOnlyAccess, AWSKeyManagementServicePowerUser, IAMFullAccess Roles
 
     If all ele fails add the 'AdministratorAccess' Role
 
@@ -54,7 +54,7 @@ catch
 
 $domainZip = "https://github.com/Tenaka/AWS-PowerShell/raw/main/AD-AWS.zip"
 Invoke-WebRequest -Uri $domainZip -OutFile "$($pwdPath)\AD-AWS.zip" 
-Expand-Archive -Path "$($pwdPath)\AD-AWS.zip" -DestinationPath $pwdPath -Force
+#Expand-Archive -Path "$($pwdPath)\AD-AWS.zip" -DestinationPath $pwdPath -Force
 
 $domainScript = "$($pwdPath)\AD-AWS\"
 
@@ -68,7 +68,7 @@ Install-Module AWS.Tools.S3 -Force
 Install-Module AWS.Tools.SimpleSystemsManagement -force
 install-module AWS.Tools.IdentityManagement -Force
 
-Install-Module AWS.Tools.Installer ; Update-AWSToolsModule -Confirm:$false
+Install-Module AWS.Tools.Installer 
 import-module AWSLambdaPSCore -Force
 import-module AWS.tools.autoscaling -Force
 import-module AWS.tools.common -Force
@@ -78,6 +78,7 @@ import-module AWS.Tools.S3 -force
 import-module AWS.Tools.SimpleSystemsManagement -force
 import-module AWS.Tools.IdentityManagement -Force
 
+Update-AWSToolsModule -Confirm:$false
 
 #List out imported modules
 Get-Module    #put in a confirmaiton that the modules are loaded correctly
@@ -322,41 +323,47 @@ New-EC2Route -RouteTableId $Ec2RouteTablePub.RouteTableId -DestinationCidrBlock 
 #>
 
 #no caps allowed in name
-<#
-{
-    "Version": "2012-10-17",
-    "Id": "Policy1415115909152",
-    "Statement": [
-        {
-            "Sid": "Access-to-specific-VPCE-only",
-            "Effect": "Allow",
-            "Principal": "*",
-            "Action": "s3:*",
-            "Resource": "arn:aws:s3:::auto-domain-create-2024-07-12-08/*",
-            "Condition": {
-                "StringEquals": {
-                    "aws:sourceVpce": "vpce-09f665820d1a4c1af"
-                }
-            }
-        }
-    ]
-}
-
-#>
-
-
 $news3Bucket = New-S3Bucket -BucketName "auto-domain-create-$($dateTodaySeconds)" -Force
 $s3BucketName = $news3Bucket.BucketName
 $S3BucketARN = "arn:aws:s3:::$($s3BucketName)"
 
 $s3Url = "https://$($s3BucketName).s3.amazonaws.com/Domain/"
 
-
-
-
-
 #Use this when running from native powershell
-Write-S3Object -BucketName $s3BucketName Domain -Folder $domainZip -Force
+Write-S3Object -BucketName $s3BucketName Domain -Folder $domainScript -Force
+
+#IAM S3 Bucket Read Account to allow DC to access S3 Bucket with user
+$s3User = "DomainCtrll-S3-READ" 
+$s3Group = 'S3-AWS-DC'
+$newIAMS3Read = New-IAMUser -UserName $s3User 
+
+$newIAMAccKey = New-IAMAccessKey -UserName $newIAMS3Read.UserName
+$iamS3AccessID = $newIAMAccKey.AccessKeyId
+$iamS3AccessKey = $newIAMAccKey.SecretAccessKey
+
+New-IAMGroup -GroupName 'S3-AWS-DC'
+Add-IAMUserToGroup -GroupName $s3Group -UserName $s3User
+
+$s3Policy = @'
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:Get*",
+                "s3:List*",
+                "s3:Describe*"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+'@
+
+$iamNewS3ReadPolicy = New-IAMPolicy -PolicyName 'S3-DC-Read' -Description 'Allows Read access to S3 from Domain Controller' -PolicyDocument $s3Policy
+
+Register-IAMGroupPolicy -GroupName $s3Group -PolicyArn $iamNewS3ReadPolicy.Arn
 
 #Endpoints
 <#
@@ -367,7 +374,6 @@ Write-S3Object -BucketName $s3BucketName Domain -Folder $domainZip -Force
 #$newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Interface -VpcId $vpcID -SecurityGroupId $SecurityGroupPriv -SubnetId $SubPrivID 
 
 $newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Gateway -VpcId $vpcID -RouteTableId $Ec2RouteTablePubID,$Ec2RouteTablePrivID
-
 $newEnpointS3ID = $newEnpointS3.VpcEndpoint.VpcEndpointId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
@@ -388,41 +394,16 @@ $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 
     $_.name -match "English" -and     `
     $_.name -notmatch "TPM-"}
 
-<#
-    -BlockDeviceMapping
 
-    $kms = New-KMSKey
-
-    #Build BlockDeviceMapping and EBSBlockDevice
-    $bdm = New-Object Amazon.EC2.Model.BlockDeviceMapping
-    $ebs = New-Object Amazon.EC2.Model.EbsBlockDevice
-    $bdm.VirtualName = "ephemeral0"
-    $bdm.DeviceName = "/dev/sda1"
-    $bdm.EBS = $ebs
-    $ebs.VolumeSize = 60
-    $ebs.VolumeType = 'standard'
-    $ebs.Encrypted = $true
-    $ebs.KmsKeyId = $kms.KeyId
-
-#>
-
-
-<#
-        #start-process powershell -wait -verb -runas -argumentlist 'copy-s3object -region us-east-1 -endpointurl https://endpoint -bucketname `$s3BucketName -keyprefix * -localfolder c:\\Downloads'
-
-        #start-process powershell -wait -verb -argumentlist '-file c:\downloads\script.ps1'
-#>
+#Public UserData to rename computer and reset admin password
 $RDPScript = 
 '<powershell>
-
         Set-LocalUser -Name "administrator" -Password (ConvertTo-SecureString -AsPlainText ChangeMe1234 -Force)
         Rename-Computer -NewName "JUMPBOX1"    
         shutdown /r /t 10
 
 </powershell>'
-
 $RDPUserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($RDPScript))
-
 
 #Create an EC2 Instance - Public Instance Jump Box
 $new2022InstancePub = New-EC2Instance `
@@ -432,6 +413,7 @@ $new2022InstancePub = New-EC2Instance `
     -SecurityGroupId $SecurityGroupPub `
     -InstanceType t3.medium `
     -SubnetId $SubPubID `
+    -BlockDeviceMapping $BlockDevMap `
     -UserData $RDPUserData
 
 $new2022InstancePubID = $new2022InstancePub.Instances.InstanceId
@@ -440,14 +422,16 @@ $tag.Key = "Name"
 $tag.Value = "$($cidr).0/27 - Public RDP Jump Box to Private"
 New-EC2Tag -Resource $new2022InstancePubID -Tag $tag    
 
-##to do - add elastic IP to RDP instance
-#new-ec2
+#Domain Controller
 
-
+start-sleep 30
 $domScript = 
 '<powershell>
 
     import-module awspowershell
+
+    Set-AWSCredential
+    Set-defaultAWSRegion
 
     $pwdPath = "C:\AWS-Domain\"
     try
@@ -477,22 +461,24 @@ $domScript =
     New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonCount -Value 0 -PropertyType string -Force
 
     $schTaskName = "AWSDCPromo"
-    $trigger = New-ScheduledTaskTrigger -AtStartup
-    $NTSystem = "NT Authority\System"
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
     $battery = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries 
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-executionPolicy bypass -file C:\AWS-Domain\AD-AWS\dcPromo.ps1"
     Register-ScheduledTask -TaskName $schTaskName -Trigger $trigger -Settings $battery -User Administrator -Action $action -RunLevel Highest -Force
 
-
     Rename-Computer -NewName "AWSDC01" 
-
     start-sleep 10
-
     shutdown /r /t 0
 
     </powershell>'
 
-$UserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($domScript))
+#Inject IAM User Creds to READ S3 Bucket then import as Base64   
+$domScript | Out-File "$($pwdPath)\Base64.log"    
+$gtDomScriptTxt = Get-Content "$($pwdPath)\Base64.log" 
+$gtDomScriptTxt.Replace("Set-AWSCredential","Set-AWSCredential -AccessKey $($iamS3AccessID) -SecretKey $($iamS3AccessKey)").Replace("Set-defaultAWSRegion","Set-defaultAWSRegion -Region $region1") | Out-File "$($pwdPath)\Base64.log" -Force
+$gtDomScriptTxt = Get-Content "$($pwdPath)\Base64.log" 
+
+$UserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($gtDomScriptTxt))
 
 $new2022InstancePriv = New-EC2Instance `
     -ImageId $gtSrv2022AMI.value `
@@ -501,6 +487,7 @@ $new2022InstancePriv = New-EC2Instance `
     -SecurityGroupId $SecurityGroupPriv  `
     -InstanceType t3.medium `
     -SubnetId $SubPrivID `
+    -BlockDeviceMapping $BlockDevMap `
     -UserData $UserData
 
 $new2022InstancePrivID = $new2022InstancePriv.Instances.InstanceId
@@ -510,8 +497,3 @@ $tag.Value = "$($cidr).32/27 - Private Domain Controller"
 New-EC2Tag -Resource $new2022InstancePrivID  -Tag $tag    
 
 
-
-
-Start-Process -wait -verb -runas -ArgumentList 
-
-Copy-S3Object -Region us-east-1 -EndpointUrl https://vpce-09f665820d1a4c1af-ohg5qml8.s3.us-east-1.vpce.amazonaws.com -BucketName auto-domain-create-2024-07-12-08 -KeyPrefix * -LocalFolder c:\\downloads

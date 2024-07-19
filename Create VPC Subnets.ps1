@@ -394,6 +394,18 @@ $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 
     $_.name -match "English" -and     `
     $_.name -notmatch "TPM-"}
 
+    $BlockDevMap = New-Object Amazon.EC2.Model.BlockDeviceMapping
+    $ebsBlockDev = New-Object Amazon.EC2.Model.EbsBlockDevice
+    #$BlockDevMap.VirtualName = "ephemeral0"
+    $BlockDevMap.DeviceName = "/dev/sda1"
+    $BlockDevMap.EBS = $ebsBlockDev
+    $ebsBlockDev.VolumeSize = 30
+    $ebsBlockDev.VolumeType = "gp2"
+    #$ebsBlockDev.Iops = 100   
+    $ebsBlockDev.Encrypted = $true
+    $ebsBlockDev.KmsKeyId = $newKMSKey.keyid
+
+    #    -BlockDeviceMapping $BlockDevMap ` add to instance
 
 #Public UserData to rename computer and reset admin password
 $RDPScript = 
@@ -413,8 +425,9 @@ $new2022InstancePub = New-EC2Instance `
     -SecurityGroupId $SecurityGroupPub `
     -InstanceType t3.medium `
     -SubnetId $SubPubID `
-    -BlockDeviceMapping $BlockDevMap `
     -UserData $RDPUserData
+
+
 
 $new2022InstancePubID = $new2022InstancePub.Instances.InstanceId
 $tag = New-Object Amazon.EC2.Model.Tag
@@ -423,51 +436,48 @@ $tag.Value = "$($cidr).0/27 - Public RDP Jump Box to Private"
 New-EC2Tag -Resource $new2022InstancePubID -Tag $tag    
 
 #Domain Controller
-
 start-sleep 30
+
+#dont add comments 
 $domScript = 
 '<powershell>
 
-    import-module awspowershell
+    import-module awspowershell ;
 
     Set-AWSCredential
     Set-defaultAWSRegion
 
-    $pwdPath = "C:\AWS-Domain\"
+    $pwdPath = "C:\AWS-Domain\" ;
     try
         {Get-ChildItem $pwdPath -erroraction Stop}  
     catch
-        {New-Item $pwdPath -ItemType Directory -Force}
+        {New-Item $pwdPath -ItemType Directory -Force} ;
 
-    $pwdDomain = "$($pwdPath)\Domain\"    
-    Copy-S3Object auto-domain-create-2024-07-12-08 -key Domain/AD-AWS.zip -LocalFile "$($pwdDomain)\AD-AWS.zip"
+    $pwdDomain = "$($pwdPath)\Domain\"    ;
+    Copy-S3Object auto-domain-create-2024-07-12-08 -key Domain/AD-AWS.zip -LocalFile "$($pwdDomain)\AD-AWS.zip" ;
 
-    Expand-Archive -Path "$($pwdDomain)\AD-AWS.zip" -DestinationPath $pwdPath -Force
-    $domainScript = "$($pwdPath)\AD-AWS\"   
+    Expand-Archive -Path "$($pwdDomain)\AD-AWS.zip" -DestinationPath $pwdPath -Force ;
+    $domainScript = "$($pwdPath)\AD-AWS\" ;   
 
-    #These need to match the json within the Zip file
-    Set-LocalUser -Name "administrator" -Password (ConvertTo-SecureString -AsPlainText ChangeMe1234 -Force)
+    Set-LocalUser -Name "administrator" -Password (ConvertTo-SecureString -AsPlainText ChangeMe1234 -Force) ;
 
-    ###### DC
-    #Autologon
-    $adminGet = gwmi win32_useraccount | where {$_.name -eq "administrator"}
-    $sidGet = $adminGet.SID
+    $adminGet = gwmi win32_useraccount | where {$_.name -eq "administrator"} ;
+    $sidGet = $adminGet.SID ;
 
-    #Sets Autologon Reg keys and credentials
-    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoAdminLogon -Value 1 -Force
-    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -Value "administrator" -Force
-    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -Value "ChangeMe1234" -Force
-    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonSID -Value $sidGet -Force
-    New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonCount -Value 0 -PropertyType string -Force
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoAdminLogon -Value 1 -Force ;
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -Value "administrator" -Force ;
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -Value "ChangeMe1234" -Force ;
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonSID -Value $sidGet -Force ;
+    New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoLogonCount -Value 0 -PropertyType string -Force ;
 
-    $schTaskName = "AWSDCPromo"
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $battery = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries 
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-executionPolicy bypass -file C:\AWS-Domain\AD-AWS\dcPromo.ps1"
-    Register-ScheduledTask -TaskName $schTaskName -Trigger $trigger -Settings $battery -User Administrator -Action $action -RunLevel Highest -Force
+    $schTaskName = "AWSDCPromo" ;
+    $trigger = New-ScheduledTaskTrigger -AtLogOn ;
+    $battery = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries  ;
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-executionPolicy bypass -file C:\AWS-Domain\AD-AWS\dcPromo.ps1" ;
+    Register-ScheduledTask -TaskName $schTaskName -Trigger $trigger -Settings $battery -User Administrator -Action $action -RunLevel Highest -Force ;
 
-    Rename-Computer -NewName "AWSDC01" 
-    start-sleep 10
+    Rename-Computer -NewName "AWSDC01"  ;
+    start-sleep 10 ;
     shutdown /r /t 0
 
     </powershell>'
@@ -475,7 +485,7 @@ $domScript =
 #Inject IAM User Creds to READ S3 Bucket then import as Base64   
 $domScript | Out-File "$($pwdPath)\Base64.log"    
 $gtDomScriptTxt = Get-Content "$($pwdPath)\Base64.log" 
-$gtDomScriptTxt.Replace("Set-AWSCredential","Set-AWSCredential -AccessKey $($iamS3AccessID) -SecretKey $($iamS3AccessKey)").Replace("Set-defaultAWSRegion","Set-defaultAWSRegion -Region $region1") | Out-File "$($pwdPath)\Base64.log" -Force
+$gtDomScriptTxt.Replace("Set-AWSCredential","Set-AWSCredential -AccessKey $($iamS3AccessID) -SecretKey $($iamS3AccessKey) ;").Replace("Set-defaultAWSRegion","Set-defaultAWSRegion -Region $region1 ;") | Out-File "$($pwdPath)\Base64.log" -Force
 $gtDomScriptTxt = Get-Content "$($pwdPath)\Base64.log" 
 
 $UserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($gtDomScriptTxt))
@@ -487,13 +497,24 @@ $new2022InstancePriv = New-EC2Instance `
     -SecurityGroupId $SecurityGroupPriv  `
     -InstanceType t3.medium `
     -SubnetId $SubPrivID `
-    -BlockDeviceMapping $BlockDevMap `
     -UserData $UserData
+
 
 $new2022InstancePrivID = $new2022InstancePriv.Instances.InstanceId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
-$tag.Value = "$($cidr).32/27 - Private Domain Controller"
+$tag.Value = "$($cidr).32/27 - Private Domain Controller yip"
 New-EC2Tag -Resource $new2022InstancePrivID  -Tag $tag    
 
 
+
+
+
+
+
+
+
+
+#Start-Process -wait -verb -runas -ArgumentList 
+
+#Copy-S3Object -Region us-east-1 -EndpointUrl https://vpce-09f665820d1a4c1af-ohg5qml8.s3.us-east-1.vpce.amazonaws.com -BucketName auto-domain-create-2024-07-12-08 -KeyPrefix * -LocalFolder c:\\downloads

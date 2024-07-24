@@ -38,35 +38,6 @@
     version 0.1
 
 #>
-#Execution of script directory location
-<#
-if($psise -ne $null)
-{
-    $ISEPath = $psise.CurrentFile.FullPath
-    $ISEDisp = $psise.CurrentFile.DisplayName.Replace("*","")
-    $pwdPath = $ISEPath.TrimEnd("$ISEDisp")
-}
-else
-{
-    $pwdPath = split-path -parent $MyInvocation.MyCommand.Path
-}
-#>
-
-#Download Domain and OU deployment scripts
-$pwdPath = "C:\AWS-Domain\"
-try
-    {Get-ChildItem $pwdPath -erroraction Stop}  
-catch
-    {New-Item $pwdPath -ItemType Directory -Force}
-
-#Download the Domain and OU scripts    
-$domainZip = "https://github.com/Tenaka/AWS-PowerShell/raw/main/AD-AWS.zip"
-Invoke-WebRequest -Uri $domainZip -OutFile "$($pwdPath)\AD-AWS.zip" 
-
-#Expand-Archive -Path "$($pwdPath)\AD-AWS.zip" -DestinationPath $pwdPath -Force
-$pwdZip = "$($pwdPath)\AD-AWS.zip"
-$domainScript = "$($pwdPath)\AD-AWS\"
-
 #Install required PowerShell Modules 
 install-module AWSLambdaPSCore -Force
 install-module AWS.tools.autoscaling -Force
@@ -122,6 +93,21 @@ catch
 #>     
 $region1 = "us-east-1"   #this is hardcoded in the ec2 userdata script as well
 Set-defaultAWSRegion -Region $region1
+
+#Download Domain and OU deployment scripts
+$pwdPath = "C:\AWS-Domain\"
+try
+    {Get-ChildItem $pwdPath -erroraction Stop}  
+catch
+    {New-Item $pwdPath -ItemType Directory -Force}
+
+#Download the Domain and OU scripts    
+$domainZip = "https://github.com/Tenaka/AWS-PowerShell/raw/main/AD-AWS.zip"
+Invoke-WebRequest -Uri $domainZip -OutFile "$($pwdPath)\AD-AWS.zip" 
+
+#Expand-Archive -Path "$($pwdPath)\AD-AWS.zip" -DestinationPath $pwdPath -Force
+$pwdZip = "$($pwdPath)\AD-AWS.zip"
+$domainScript = "$($pwdPath)\AD-AWS\"
 
 <#    
     Declare Subnet for VPC
@@ -301,7 +287,7 @@ Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @( $InTC
 #>
 
 <#
-    Transit Gateways - Transit Gateway to route VPN traffic to on-prem subnet of 192.168.2.0/24 (declared in route table)
+    Transit Gateways - Transit Gateway to route VPN traffic to on-prem subnet of 192.168.2.0/24 (declared in route table
 #>
 $newTransitGateway = New-EC2TransitGateway
 $transitGateID = $newTransitGateway.TransitGatewayId 

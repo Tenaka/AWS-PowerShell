@@ -112,9 +112,9 @@ $domainScript = "$($pwdPath)\AD-AWS\"
 <#    
     Declare Subnet for VPC
 #> 
-$cidr = "10.2.99"      # Dont use "10.1.250.0/24" as this is assigned to Transit Gateway and another VPC
+$cidr = "10.1.1"      # Dont use "10.1.250.0/24" as this is assigned to Transit Gateway and another VPC
 $cidrFull = "$($cidr).0/24"
-$whatsMyIP = "217.44.82.238"    #Enter your IP home or business will be used for allowing RDP traffic into Server
+$whatsMyIP = (Invoke-WebRequest ifconfig.me/ip).Content.Trim()    #Enter your IP home or business will be used for allowing RDP traffic into Server
 
 #Transit Gateway Route to another VPC
 $transitRoute = "10.2.250.0/24"
@@ -124,8 +124,8 @@ $transitRoute = "10.2.250.0/24"
 #> 
 $dateToday = get-date -format "yyyy-MM-dd"
 $dateTodaySeconds = get-date -format "yyyy-MM-dd-ss"
-$newKeyPair = New-EC2KeyPair -KeyName "$($dateToday)-KP" -KeyFormat pem -KeyType rsa
-$keyPairMaterial = $newKeyPair.KeyMaterial > "$($pwdPath)\$($dateToday)-KP.pem"
+$newKeyPair = New-EC2KeyPair -KeyName "$($cidr)-$($dateToday)-KP" -KeyFormat pem -KeyType rsa
+$keyPairMaterial = $newKeyPair.KeyMaterial > "$($pwdPath)\$($cidr)-$($dateToday)-KP.pem"
 
 <#
     New Key Management Service (KMS) value requires  AWS.Tools.KeyManagementService module
@@ -136,8 +136,7 @@ $tag.TagKey = "Name"
 $tag.TagValue = "$($cidr).0/27 - KMS"
 Add-KMSResourceTag -KeyId $newKMSKey.keyid -Tags $tag
 #no spaces allowed with Alias
-New-KMSAlias -TargetKeyId $newKMSKey.keyid -AliasName "alias/KMS-for-Encrypting-Volumes-$($dateToday)"
-
+New-KMSAlias -TargetKeyId $newKMSKey.keyid -AliasName "alias/KMS-Encrypt-Volumes-$($dateToday)"
 
 <#
     New VPC

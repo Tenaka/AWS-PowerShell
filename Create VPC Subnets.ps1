@@ -93,7 +93,7 @@ Update-AWSToolsModule -Confirm:$false
     Quick test to see if the aws.tools modules have been imported
 #>
 $gtModules = (Get-Module  | where {$_.name -like "AWS.*"}).name  #put in a confirmaiton that the modules are loaded correctly
-if ($gtModules -notmatch "aws.toolsh")
+if ($gtModules -notmatch "aws.tools")
     {   
         write-host "Missing AWS Modules"
         Pause

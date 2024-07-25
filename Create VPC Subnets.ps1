@@ -243,28 +243,37 @@ $tag.Value = "PrivateSubnet"
 New-EC2Tag -Resource $SecurityGroupPriv -Tag $tag
 
 #Inbound Rules
-$InAllCidr = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges=$cidrFull}
-$InTCPWinRm = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges=$cidrFull}
-$InTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges=$cidrFull}
-$InTCPWhatmyIP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="$($whatsMyIP)/32"}
-$InTCPWhatmyIPWinRM = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="$($whatsMyIP)/32"}
+$InAllCidr = @{IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges=$cidrFull}
+$InAllPrivCidr = @{IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="$($cidr).32/27"}
+$InTCPWinRm = @{IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges=$cidrFull}
+$InTCP3389 = @{IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges=$cidrFull}
+$InTCPWhatmyIP3389 = @{IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges="$($whatsMyIP)/32"}
+$InTCPWhatmyIPWinRM = @{IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges="$($whatsMyIP)/32"}
 
 #Outbound Rules
-$EgTCPWinRM = @{ IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges=$cidrFull }
-$EgTCP3389 = @{ IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges=$cidrFull }
-$EgTCP443 = @{ IpProtocol="tcp"; FromPort="443"; ToPort="443"; IpRanges="0.0.0.0/0" }
+$EgAllCidr = @{IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges=$cidrFull}
+$EgAllPrivCidr = @{IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="$($cidr).32/27"}
+$EgTCPWinRM = @{IpProtocol="tcp"; FromPort="5985"; ToPort="5986"; IpRanges=$cidrFull}
+$EgTCP3389 = @{IpProtocol="tcp"; FromPort="3389"; ToPort="3389"; IpRanges=$cidrFull}
+$EgTCP443 = @{IpProtocol="tcp"; FromPort="443"; ToPort="443"; IpRanges="0.0.0.0/0"}
 
 #PUBLIC - Inbound
-Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPub -IpPermission @( $InTCPWhatmyIP3389,$InAllCidr)
+Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPub -IpPermission @($InTCPWhatmyIP3389)
 #PUBLIC - Outbound
-Grant-EC2SecurityGroupEgress -GroupId $SecurityGroupPub -IpPermission @( $EgTCPWinRM, $EgTCP3389 )
+Grant-EC2SecurityGroupEgress -GroupId $SecurityGroupPub -IpPermission @($EgTCPWinRM, $EgTCP3389)
 
 #PUBLIC - Remove the default any any outbound rule
 $InRvDefault = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="0.0.0.0/0" }
 Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroupPub -IpPermission $InRvDefault
 
 #PRIVATE Inbound
-Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @( $InTCP3389, $InTCPWinRm )
+Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @($InAllPrivCidr, $InTCP3389, $InTCPWinRm)
+#PRIVATE Outbound
+Grant-EC2SecurityGroupEgress -GroupId $SecurityGroupPriv -IpPermission @($EgAllPrivCidr)
+#PRIVATE - Remove the default any any outbound rule
+$InRvDefault = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="0.0.0.0/0" }
+Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroupPriv -IpPermission $InRvDefault
+
 
 #NACLs
 <#

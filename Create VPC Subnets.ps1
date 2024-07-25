@@ -39,26 +39,27 @@
 
 #>
 #Install required PowerShell Modules 
-install-module AWSLambdaPSCore -Force
-install-module AWS.tools.autoscaling -Force
-install-module AWS.tools.common -Force
-install-module AWS.tools.ec2 -Force
-Install-Module AWS.Tools.KeyManagementService -Force
-Install-Module AWS.Tools.S3 -Force
-Install-Module AWS.Tools.SimpleSystemsManagement -force
-install-module AWS.Tools.IdentityManagement -Force
+
+$awsModules = "AWSLambdaPSCore",
+"AWS.tools.autoscaling",
+"AWS.tools.common",
+"AWS.tools.ec2",
+"AWS.Tools.KeyManagementService",
+"AWS.Tools.S3",
+"AWS.Tools.SimpleSystemsManagement",
+"AWS.Tools.IdentityManagement"
+
+foreach($awsModule in $awsModules)
+    {
+        install-module $awsModule -Force
+    }
 
 Update-AWSToolsModule -Confirm:$false
 
-import-module AWSLambdaPSCore -Force
-Import-Module AWS.Tools.Installer 
-import-module AWS.tools.autoscaling -Force
-import-module AWS.tools.common -Force
-import-module AWS.tools.ec2 -Force
-import-module AWS.Tools.KeyManagementService -Force
-import-module AWS.Tools.S3 -force
-import-module AWS.Tools.SimpleSystemsManagement -force
-import-module AWS.Tools.IdentityManagement -Force
+foreach($awsModule in $awsModules)
+    {
+        import-module $awsModule -Force
+    }
 
 <#    
     Quick test to see if the aws.tools modules have been imported

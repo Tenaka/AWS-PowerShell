@@ -48,8 +48,10 @@ Install-Module AWS.Tools.S3 -Force
 Install-Module AWS.Tools.SimpleSystemsManagement -force
 install-module AWS.Tools.IdentityManagement -Force
 
-Install-Module AWS.Tools.Installer 
+Update-AWSToolsModule -Confirm:$false
+
 import-module AWSLambdaPSCore -Force
+Import-Module AWS.Tools.Installer 
 import-module AWS.tools.autoscaling -Force
 import-module AWS.tools.common -Force
 import-module AWS.tools.ec2 -Force
@@ -58,18 +60,17 @@ import-module AWS.Tools.S3 -force
 import-module AWS.Tools.SimpleSystemsManagement -force
 import-module AWS.Tools.IdentityManagement -Force
 
-Update-AWSToolsModule -Confirm:$false
-
 <#    
     Quick test to see if the aws.tools modules have been imported
 #>
-$gtModules = (Get-Module  | where {$_.name -like "AWS.*"}).name  #put in a confirmaiton that the modules are loaded correctly
-if ($gtModules -notmatch "aws.tools")
+$gtModules = (Get-Module  | where {$_.name -like "AWS.Tools.Identity*"}).name  #put in a confirmaiton that the modules are loaded correctly
+if ($gtModules -notmatch "AWS.Tools.IdentityManagement")
     {   
         write-host "Missing AWS Modules"
         Pause
         exit;
     }
+(get-module | where {$_.name -like "AWS.*"}).name
 
 <#    
     Set-AWSCredential -AccessKey -SecretKey
@@ -511,6 +512,6 @@ $new2022InstancePriv = New-EC2Instance `
 $new2022InstancePrivID = $new2022InstancePriv.Instances.InstanceId
 $tag = New-Object Amazon.EC2.Model.Tag
 $tag.Key = "Name"
-$tag.Value = "$($cidr).32/27 - Private Domain Controller yip"
+$tag.Value = "$($cidr).32/27 - Private Domain Controller"
 New-EC2Tag -Resource $new2022InstancePrivID  -Tag $tag    
 

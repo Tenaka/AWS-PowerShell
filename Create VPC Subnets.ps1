@@ -271,12 +271,15 @@ Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroupPub -IpPermission $InRvDefa
 Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @($InAllPrivCidr, $InTCP3389, $InTCPWinRm)
 #PRIVATE Outbound
 Grant-EC2SecurityGroupEgress -GroupId $SecurityGroupPriv -IpPermission @($EgAllPrivCidr)
-#PRIVATE - Remove the default any any outbound rule
-$InRvDefault = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="0.0.0.0/0" }
-Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroupPriv -IpPermission $InRvDefault
+
+#PRIVATE - Remove the default any any outbound rule - Do not enable as this will prevent access to S3 Bucket
+#$InRvDefault = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="0.0.0.0/0" }
+#Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroupPriv -IpPermission $InRvDefault
 
 
-#NACLs
+<#
+    NACLs - not required for this stage of the project
+#>    
 <#
     New-EC2NetworkAcl -VpcId vpc-12345678
     New-EC2NetworkAclEntry -NetworkAclId acl-12345678 -Egress $false -RuleNumber 100 -Protocol 17 -PortRange_From 53 -PortRange_To 53 -CidrBlock 0.0.0.0/0 -RuleAction allow
@@ -297,8 +300,10 @@ Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroupPriv -IpPermission $InRvDef
 #>
 
 <#
+    Not required for this stage of the project
     Transit Gateways - Transit Gateway to route VPN traffic to on-prem subnet of 192.168.2.0/24 (declared in route table
 #>
+<#
 $newTransitGateway = New-EC2TransitGateway
 $transitGateID = $newTransitGateway.TransitGatewayId 
 $tag = New-Object Amazon.EC2.Model.Tag
@@ -312,7 +317,7 @@ New-EC2Tag -Resource $transitGateID -Tag $tag
         }
         Start-Sleep 30    #still working on this, but looks like it reports as available before it is able to attach  
 
-
+#>
 
 <#
     Transit Gateway attachments - VPC to TG
@@ -504,7 +509,7 @@ $domScript =
 #Inject IAM User Creds to READ S3 Bucket then import as Base64   
 $domScript | Out-File "$($pwdPath)\Base64.log"    
 $gtDomScriptTxt = Get-Content "$($pwdPath)\Base64.log" 
-$gtDomScriptTxt.Replace("Set-AWSCredential","Set-AWSCredential -AccessKey $($iamS3AccessID) -SecretKey $($iamS3AccessKey) ;").Replace("Set-defaultAWSRegion","Set-defaultAWSRegion -Region $region1 ;") | Out-File "$($pwdPath)\Base64.log" -Force
+$gtDomScriptTxt.Replace("Set-AWSCredential","Set-AWSCredential -AccessKey $($iamS3AccessID) -SecretKey $($iamS3AccessKey) ;").Replace("Set-defaultAWSRegion","Set-defaultAWSRegion -Region $region1 ;").replace("auto-domain-create-2024-07-12-08","auto-domain-create-$($dateTodaySeconds)") | Out-File "$($pwdPath)\Base64.log" -Force
 $gtDomScriptTxt = Get-Content "$($pwdPath)\Base64.log" 
 
 $UserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($gtDomScriptTxt))

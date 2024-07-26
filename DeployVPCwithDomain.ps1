@@ -11,9 +11,67 @@
         AmazonSSMReadOnlyAccess, 
         AWSKeyManagementServicePowerUser, 
         IAMFullAccess, 
-        AmazonS3FullAccess Roles
+        AmazonSSMManagedInstanceCore,
 
-    If all ele fails add the 'AdministratorAccess' Role
+And the following 2 custom policies 
+
+KMS to grant enabling encrypted volumes - needs refining - without this volumes cant be encrypted and instances will fail to deploy
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "kms:Decrypt",
+                "kms:GenerateRandom",
+                "kms:ListRetirableGrants",
+                "kms:CreateCustomKeyStore",
+                "kms:DescribeCustomKeyStores",
+                "kms:ListKeys",
+                "kms:DeleteCustomKeyStore",
+                "kms:UpdateCustomKeyStore",
+                "kms:Encrypt",
+                "kms:ListAliases",
+                "kms:GenerateDataKey",
+                "kms:DisconnectCustomKeyStore",
+                "kms:CreateKey",
+                "kms:DescribeKey",
+                "kms:ConnectCustomKeyStore",
+                "kms:CreateGrant"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": "kms:*",
+            "Resource": "*"
+        }
+    ]
+}
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:SendCommand",
+                "ssmmessages:CreateDataChannel",
+                "ssmmessages:OpenDataChannel",
+                "ssmmessages:OpenControlChannel",
+                "ssmmessages:CreateControlChannel"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+
+
+
+
+    If all else fails add the 'AdministratorAccess' Role
 
     Click into the new user account and select the Security Credential tab
 
@@ -270,7 +328,7 @@ Revoke-EC2SecurityGroupEgress -GroupId $SecurityGroupPub -IpPermission $InRvDefa
 #PRIVATE Inbound
 Grant-EC2SecurityGroupIngress -GroupId $SecurityGroupPriv -IpPermission @($InAllPrivCidr, $InTCP3389, $InTCPWinRm)
 #PRIVATE Outbound
-Grant-EC2SecurityGroupEgress -GroupId $SecurityGroupPriv -IpPermission @($EgAllPrivCidr)
+Grant-EC2SecurityGroupEgress -GroupId $SecurityGroupPriv -IpPermission @($EgAllPrivCidr,$EgAllCidr)
 
 #PRIVATE - Remove the default any any outbound rule - Do not enable as this will prevent access to S3 Bucket
 #$InRvDefault = @{ IpProtocol="-1"; FromPort="-1"; ToPort="-1"; IpRanges="0.0.0.0/0" }
@@ -422,16 +480,24 @@ $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 
     $_.name -notmatch "TPM-"}
 
     #declare volume mapping and encryption - still work in progress
-    $BlockDevMap = New-Object Amazon.EC2.Model.BlockDeviceMapping
-    $ebsBlockDev = New-Object Amazon.EC2.Model.EbsBlockDevice
-    #$BlockDevMap.VirtualName = "ephemeral0"
-    $BlockDevMap.DeviceName = "/dev/sda1"
-    $BlockDevMap.EBS = $ebsBlockDev
-    $ebsBlockDev.VolumeSize = 30
-    $ebsBlockDev.VolumeType = "gp2"
-    #$ebsBlockDev.Iops = 100   
-    $ebsBlockDev.Encrypted = $true
-    $ebsBlockDev.KmsKeyId = $newKMSKey.keyid
+    #https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/image/block_device_mappings.html
+    
+    $ebsVolType = "io1"
+    $ebsIops = 200
+    $ebsTrue = $true
+    $ebsFalse = $false
+    $ebskmsKeyArn = $newKMSKey.Arn
+    $ebsVolSize = 50
+
+    $blockDeviceMapping = New-Object Amazon.EC2.Model.BlockDeviceMapping
+    $blockDeviceMapping.DeviceName = "/dev/sda1"
+    $blockDeviceMapping.Ebs = New-Object Amazon.EC2.Model.EbsBlockDevice
+    $blockDeviceMapping.Ebs.DeleteOnTermination = $enc
+    $blockDeviceMapping.Ebs.Iops = $ebsIops
+    $blockDeviceMapping.Ebs.KmsKeyId = $ebsKmsKeyArn
+    $blockDeviceMapping.Ebs.Encrypted = $ebsTrue
+    $blockDeviceMapping.Ebs.VolumeSize = $ebsVolSize
+    $blockDeviceMapping.Ebs.VolumeType = $ebsVolType
 
     #    -BlockDeviceMapping $BlockDevMap ` add to instance
 
@@ -453,7 +519,8 @@ $new2022InstancePub = New-EC2Instance `
     -SecurityGroupId $SecurityGroupPub `
     -InstanceType t3.medium `
     -SubnetId $SubPubID `
-    -UserData $RDPUserData
+    -UserData $RDPUserData `
+    -BlockDeviceMapping $blockDeviceMapping
 
 $new2022InstancePubID = $new2022InstancePub.Instances.InstanceId
 $tag = New-Object Amazon.EC2.Model.Tag
@@ -522,7 +589,8 @@ $new2022InstancePriv = New-EC2Instance `
     -SecurityGroupId $SecurityGroupPriv  `
     -InstanceType t3.medium `
     -SubnetId $SubPrivID `
-    -UserData $UserData
+    -UserData $UserData `
+    -BlockDeviceMapping $blockDeviceMapping   
 
 $new2022InstancePrivID = $new2022InstancePriv.Instances.InstanceId
 $tag = New-Object Amazon.EC2.Model.Tag

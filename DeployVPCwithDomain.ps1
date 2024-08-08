@@ -105,7 +105,6 @@ $awsModules = "AWSLambdaPSCore",
 "AWS.Tools.S3",
 "AWS.Tools.IdentityManagement",
 "AWS.Tools.SimpleSystemsManagement"
-
 $awsModCount = $awsModules.Count
 
 foreach ($awsModule in $awsModules)
@@ -114,7 +113,12 @@ foreach ($awsModule in $awsModules)
             write-host "Installed $awsModule" -ForegroundColor Green
     }
 
-#highlight any issues importing moduels, this is an issue with Visual Code Studio
+<#
+    Highlight any problems importing moduels, this is a Visual Code Studio feature locking\in-use .dll's preventing modules importing
+    The fix is to close down the application (vsc or powershell) and try to import the modules again
+    Last resort is to close application, delete the directories containing the modules
+    The following tries to check that all the modules are loaded correctly
+#>
 $i=0
 foreach ($awsModule in $awsModules)
     {
@@ -133,17 +137,15 @@ foreach ($awsModule in $awsModules)
                             Write-Host "Close down app executing this script as the Modules are in use and retry" -ForegroundColor red
                             Write-Host "Failing that, close down app and remove the following directory $spPathModule and then try again" -ForegroundColor Red
                 }
-               
-                $i++
-                
+               #If this equals more than zero there's problems with importing modules
+                $i++                
             }
     }
 if ($i -gt 0)
     {
         write-host "Fix issues with importing modules" -ForegroundColor Red
         pause
-        exit
-
+        exit;
     }
     
     #Update-AWSToolsModule -Confirm:$false
@@ -195,7 +197,7 @@ catch
 
 #Logging
 Start-Transcript -Path "$($pwdPath)\AWS-Logging.log" -Force
-
+    write-host "Logs are written to $($pwdPath)\AWS-Logging.log" -ForegroundColor Green
 #Download the Domain and OU scripts
 try {
         $domainZip = "https://github.com/Tenaka/AWS-PowerShell/raw/main/AD-AWS.zip" 
@@ -222,8 +224,7 @@ $gtVpcCidr = Get-EC2Vpc
         {
             Write-Host "The VPC has the CIDR already, change the CIDR and try again" -ForegroundColor Red
             pause
-            exit
-    
+            exit;    
         }
 
 #Get the Public IP of the Router - Require to set RDP access via Public Security Group
@@ -322,7 +323,7 @@ catch
         $exceptionMessage = $_.Exception.message 
             write-host "A VPC has failed creation" -ForegroundColor Red
         Pause
-        exit
+        exit;
     } 
 
 <#
@@ -383,8 +384,7 @@ try
         $tag.Key = "Name"
         $tag.Value = "$cidr-InternetGateway"
         New-EC2Tag -Resource $InterGatewayID -Tag $tag 
-            write-host "New Internet Gateway has been created with and id of $InterGatewayID" -ForegroundColor Green
-                  
+            write-host "New Internet Gateway has been created with and id of $InterGatewayID" -ForegroundColor Green             
     }
 catch
     {
@@ -623,7 +623,6 @@ try
         $iamS3AccessID = $newIAMAccKey.AccessKeyId
         $iamS3AccessKey = $newIAMAccKey.SecretAccessKey
             write-host "The User Access Key and Secret have been created with the values set to the vars" -ForegroundColor Green
-       
     }
 catch
     {
@@ -679,9 +678,9 @@ catch
     Endpoints
     New-EC2VpcEndpoint -ServiceName c-om.amazonaws.eu-west-1.s3 -VpcId vpc-
 
-        com.amazonaws.us-east-1.s3
+    $newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Interface -VpcId $vpcID -SecurityGroupId $SecurityGroupPriv -SubnetId $SubPrivID 
+
 #> 
-#$newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Interface -VpcId $vpcID -SecurityGroupId $SecurityGroupPriv -SubnetId $SubPrivID 
 try 
     {
         $newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Gateway -VpcId $vpcID -RouteTableId $Ec2RouteTablePubID,$Ec2RouteTablePrivID -errorAction Stop
@@ -831,3 +830,4 @@ $tag.Key = "Name"
 $tag.Value = "$($cidr).32/27 - Private Domain Controller"
 New-EC2Tag -Resource $new2022InstancePrivID  -Tag $tag    
 
+Stop-Transcript

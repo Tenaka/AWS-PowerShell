@@ -205,6 +205,9 @@ try {
         #Expand-Archive -Path "$($pwdPath)\AD-AWS.zip" -DestinationPath $pwdPath -Force
         $pwdZip = "$($pwdPath)\AD-AWS.zip"
         $domainScript = "$($pwdPath)\AD-AWS\"
+            write-host "Update the region and passwords within the zip file, if you want them to be different"
+            write-host "The default passwors is 'ChangeMe1234', default region is 'us-east-1'"
+                pause
     }
 catch
     {
@@ -588,12 +591,14 @@ try
 
         $s3Url = "https://$($s3BucketName).s3.amazonaws.com/Domain/"
         Write-S3Object -BucketName $s3BucketName Domain -Folder $pwdPath -Force -errorAction
-            Write-Host "The Domain zip file has been uploaded to auto-domain-create-$($dateTodayMinutes) S3 Bucket"        
+            Write-Host "The Domain zip file has been uploaded to "auto-domain-create-$($dateTodayMinutes)" S3 Bucket"        
     }
 catch
     {
         $exceptionMessage = $_.Exception.message 
             Write-Host "Either the S3 Bucket failed to be created or the Zip file hasnt uploaded" -ForegroundColor Red
+            write-host "Check that "auto-domain-create-$($dateTodayMinutes)" bucket has been created and "$($pwdPath)\AD-AWS.zip" has been uploaded, then continue" -ForegroundColor Yellow 
+            Pause
     } 
 
 <#
@@ -761,7 +766,7 @@ $tag.Key = "Name"
 $tag.Value = "$($cidr).0/27 - Public RDP Jump Box to Private"
 New-EC2Tag -Resource $new2022InstancePubID -Tag $tag    
 
-#PRIVATE Userdate - dont add comments - makes this a Domain Controller
+#PRIVATE Userdata - dont add comments - makes this a Domain Controller
 $domScript = 
 '<powershell>
 

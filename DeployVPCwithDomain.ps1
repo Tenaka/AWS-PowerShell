@@ -588,9 +588,10 @@ try
             Write-Host "New S3 Bucket with a name of auto-domain-create-$($dateTodayMinutes) has been created" -ForegroundColor Green
         $s3BucketName = $news3Bucket.BucketName
         $S3BucketARN = "arn:aws:s3:::$($s3BucketName)"
+        Start-Sleep 10
 
         $s3Url = "https://$($s3BucketName).s3.amazonaws.com/Domain/"
-        Write-S3Object -BucketName $s3BucketName Domain -Folder $pwdPath -Force -errorAction
+        Write-S3Object -BucketName $s3BucketName Domain -File "$($pwdPath)\AD-AWS.zip" -Force -errorAction stop 
             Write-Host "The Domain zip file has been uploaded to "auto-domain-create-$($dateTodayMinutes)" S3 Bucket"        
     }
 catch
@@ -684,11 +685,10 @@ catch
     New-EC2VpcEndpoint -ServiceName c-om.amazonaws.eu-west-1.s3 -VpcId vpc-
 
     $newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Interface -VpcId $vpcID -SecurityGroupId $SecurityGroupPriv -SubnetId $SubPrivID 
-
 #> 
 try 
     {
-        $newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.us-east-1.s3" -VpcEndpointType Gateway -VpcId $vpcID -RouteTableId $Ec2RouteTablePubID,$Ec2RouteTablePrivID -errorAction Stop
+        $newEnpointS3 = New-EC2VpcEndpoint -ServiceName "com.amazonaws.$($region1).s3" -VpcEndpointType Gateway -VpcId $vpcID -RouteTableId $Ec2RouteTablePubID,$Ec2RouteTablePrivID -errorAction Stop
 
         $newEnpointS3ID = $newEnpointS3.VpcEndpoint.VpcEndpointId
         $tag = New-Object Amazon.EC2.Model.Tag
@@ -707,10 +707,11 @@ catch
 <#
     EC2 Instances
 #>
-#Enforce EC2 Volume Encryption - need to enable ebs encryption with KMS and not the AWS key
+#Enforce EC2 Volume Encryption
 Enable-EC2EbsEncryptionByDefault -Region $region1
 
 #Search for the latest Srv 2022 Base
+Write-Host "Searching for Windows 2022 Base Image" -ForegroundColor Green
 $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 | 
     where {$_.name -match "2022" -and `
     $_.name -match "full-base"-and    `
@@ -719,7 +720,8 @@ $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 
 
     #declare volume mapping and encryption - still work in progress
     #https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/image/block_device_mappings.html
-    
+   
+    Write-Host "Setting the Volume attributes" -ForegroundColor Green
     $ebsVolType = "io1"
     $ebsIops = 2000
     $ebsTrue = $true
@@ -749,6 +751,7 @@ $RDPScript =
 </powershell>'
 $RDPUserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($RDPScript))
 
+Write-Host "Creating a Public EC2 Instance"
 #PUBLIC - Create an EC2 Instance - Public Instance Jump Box
 $new2022InstancePub = New-EC2Instance `
     -ImageId $gtSrv2022AMI.value `
@@ -782,7 +785,7 @@ $domScript =
         {New-Item $pwdPath -ItemType Directory -Force} ;
 
     $pwdDomain = "$($pwdPath)\Domain\"    ;
-    Copy-S3Object auto-domain-create-2024-07-12-08 -key Domain/AD-AWS.zip -LocalFile "$($pwdDomain)\AD-AWS.zip" ;
+    Copy-S3Object auto-domain-create-2024-07-12-08 -key Domain -LocalFile "$($pwdDomain)\AD-AWS.zip" ;
 
     Expand-Archive -Path "$($pwdDomain)\AD-AWS.zip" -DestinationPath $pwdPath -Force ;
     $domainScript = "$($pwdPath)\AD-AWS\" ;   
@@ -818,6 +821,7 @@ $gtDomScriptTxt = Get-Content "$($pwdPath)\Base64.log"
 
 $UserData = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($gtDomScriptTxt))
 
+Write-Host "Creating a Private DC EC2 Instance"
 #PRIVATE Instance
 $new2022InstancePriv = New-EC2Instance `
     -ImageId $gtSrv2022AMI.value `

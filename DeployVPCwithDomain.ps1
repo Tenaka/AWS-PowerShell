@@ -723,7 +723,7 @@ $gtSrv2022AMI = Get-SSMLatestEC2Image -Path ami-windows-latest -Region $region1 
    
     Write-Host "Setting the Volume attributes" -ForegroundColor Green
     $ebsVolType = "io1"
-    $ebsIops = 2000
+    $ebsIops = 1000
     $ebsTrue = $true
     $ebsFalse = $false
     $ebskmsKeyArn = $newKMSKey.Arn

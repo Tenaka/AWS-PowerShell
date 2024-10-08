@@ -1,5 +1,7 @@
 # AWS-PowerShell
 
+Before we start, deploying this will incur AWS costs, the instance type is t3.medium and the volume is set to $ebsVolType = "io1" and $ebsIops = 1000
+
 This is in Dev and may not work as intended.
 
 The script will deploy a VPC with a private and public subnet.
